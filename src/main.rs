@@ -3,14 +3,20 @@
 
 use cst816s::TouchGesture;
 use embedded_hal::digital::v2::{InputPin, OutputPin};
+use embedded_hal::prelude::_embedded_hal_timer_CountDown;
 use panic_halt as _;
 use rp_pico as bsp;
-use rp_pico::hal::gpio::FunctionI2C;
+use rp_pico::hal::gpio::{
+    DynPinId, FunctionI2C, FunctionPwm, FunctionSioInput, Pin, PullDown, PullUp,
+};
 use rp_pico::hal::I2C;
-use rp_pico::pac::i2c0;
+#[allow(clippy::wildcard_imports)]
+use usb_device::{class_prelude::*, prelude::*};
+use usbd_human_interface_device::device::joystick::JoystickReport;
+use usbd_human_interface_device::prelude::*;
 
 use bsp::entry;
-use fugit::RateExtU32;
+use fugit::{ExtU32, RateExtU32};
 
 use display_interface_spi::SPIInterface;
 use embedded_graphics::prelude::*;
@@ -20,12 +26,15 @@ use embedded_graphics::{
 };
 
 use bsp::hal::{
+    self,
     clocks::{init_clocks_and_plls, Clock},
-    gpio, i2c, pac, pwm,
+    gpio, pac, pwm,
     sio::Sio,
     spi,
     watchdog::Watchdog,
 };
+
+use crate::hal::usb::UsbBus;
 
 #[entry]
 fn main() -> ! {
@@ -50,6 +59,8 @@ fn main() -> ! {
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().to_Hz());
 
+    let timer = bsp::hal::timer::Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
+
     let pins = bsp::Pins::new(
         pac.IO_BANK0,
         pac.PADS_BANK0,
@@ -57,13 +68,37 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
+    // USB
+    let usb_bus = UsbBusAllocator::new(UsbBus::new(
+        pac.USBCTRL_REGS,
+        pac.USBCTRL_DPRAM,
+        clocks.usb_clock,
+        true,
+        &mut pac.RESETS,
+    ));
+
+    let mut joy = UsbHidClassBuilder::new()
+        .add_device(usbd_human_interface_device::device::joystick::JoystickConfig::default())
+        .build(&usb_bus);
+
+    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
+        .strings(&[StringDescriptors::default()
+            .manufacturer("skharv")
+            .product("touchbox")
+            .serial_number("TEST")])
+        .unwrap()
+        .build();
+
     // These are implicitly used by the spi driver if they are in the correct mode
-    let _spi_sclk = pins.gpio10.into_mode::<gpio::FunctionSpi>();
-    let _spi_mosi = pins.gpio11.into_mode::<gpio::FunctionSpi>();
+    let spi_sclk = pins.gpio10.into_function::<gpio::FunctionSpi>();
+    let spi_mosi = pins.gpio11.into_function::<gpio::FunctionSpi>();
+    let spi_miso = pins.gpio12.into_function::<gpio::FunctionSpi>();
     let spi_cs = pins.gpio9.into_push_pull_output();
 
+    let valid_pinout = (spi_mosi, spi_miso, spi_sclk);
+
     // Create an SPI driver instance for the SPI1 device
-    let spi = spi::Spi::<_, _, 8>::new(pac.SPI1);
+    let spi = spi::Spi::<_, _, _, 8>::new(pac.SPI1, valid_pinout);
 
     // Exchange the uninitialised SPI driver for an initialised one
     let spi = spi.init(
@@ -82,13 +117,15 @@ fn main() -> ! {
     let pwm_slices = pwm::Slices::new(pac.PWM, &mut pac.RESETS);
 
     // Configure PWM6
-    let mut pwm = pwm_slices.pwm6;
+    let mut pwm = pwm_slices.pwm4;
     pwm.set_ph_correct();
     pwm.enable();
 
-    // Output channel B on PWM6 to GPIO 13
-    let mut channel = pwm.channel_a;
-    channel.output_to(pins.gpio12);
+    // Output channel B on PWM4 to GPIO 25
+    let mut channel = pwm.channel_b;
+    let led_pin = pins.led.into_function::<FunctionPwm>();
+
+    channel.output_to(led_pin);
 
     // Create display driver
     let mut display = gc9a01a::GC9A01A::new(spi_interface, rst_pin, channel);
@@ -98,9 +135,10 @@ fn main() -> ! {
     display.initialize(&mut delay).unwrap();
     // Fill screen with single color
     display.clear(Rgb565::CSS_IVORY).unwrap();
+    display.set_backlight(55000);
     // Turn on backlight
-    let mut led_pin = pins.led.into_push_pull_output();
-    led_pin.set_high().unwrap();
+    //let mut led_pin = pins.led.into_push_pull_output();
+    //led_pin.set_high().unwrap();
 
     let yoffset = 100;
 
@@ -113,13 +151,13 @@ fn main() -> ! {
     let gpio22 = pins.gpio22.into_push_pull_output();
 
     // Setup I2C for touchpad
-    let sda_pin = pins.gpio6.into_mode::<FunctionI2C>();
-    let scl_pin = pins.gpio7.into_mode::<FunctionI2C>();
+    let sda_pin = pins.gpio6.into_function::<FunctionI2C>();
+    let scl_pin = pins.gpio7.into_function::<FunctionI2C>();
 
     let i2c0_pins = I2C::i2c1(
         pac.I2C1,
-        sda_pin,
-        scl_pin,
+        sda_pin.reconfigure(),
+        scl_pin.reconfigure(),
         400.kHz(),
         &mut pac.RESETS,
         &clocks.peripheral_clock,
@@ -157,35 +195,39 @@ fn main() -> ! {
         .draw(&mut display)
         .unwrap();
 
-    let gpio28 = pins.gpio28.into_pull_down_input();
+    let mut input_pins: [Pin<DynPinId, FunctionSioInput, PullUp>; 3] = [
+        pins.gpio26.into_pull_up_input().into_dyn_pin(),
+        pins.gpio27.into_pull_up_input().into_dyn_pin(),
+        pins.gpio28.into_pull_up_input().into_dyn_pin(),
+    ];
 
-    let mut refresh_count = 0;
+    let mut input_count_down = timer.count_down();
+    input_count_down.start(1.millis());
 
     loop {
-        if let Some(evt) = touchpad.read_one_touch_event(true) {
-            refresh_count += 1;
+        if input_count_down.wait().is_ok() {
+            if let Some(evt) = touchpad.read_one_touch_event(true) {
+                match evt.gesture {
+                    TouchGesture::LongPress => {
+                        display.set_backlight(55000);
+                    }
+                    TouchGesture::SingleClick => {
+                        display.set_backlight(1000);
+                    }
+                    _ => (),
+                };
+            }
 
-            let touch_time = match evt.gesture {
-                TouchGesture::LongPress => {
-                    refresh_count = 1000;
-                    50_000
+            match joy.device().write_report(&get_report(&mut input_pins)) {
+                Err(UsbHidError::WouldBlock) => {}
+                Ok(_) => {}
+                Err(e) => {
+                    core::panic!("Failed to write joystick report: {:?}", e)
                 }
-                TouchGesture::SingleClick => 5_000,
-                _ => 0,
-            };
-
-            if touch_time > 0 {
-                led_pin.set_high().unwrap();
-            }
-
-            if refresh_count > 40 {
-                refresh_count = 0;
             }
         }
 
-        if gpio28.is_high().unwrap() {
-            led_pin.set_low().unwrap();
-        }
+        if usb_dev.poll(&mut [&mut joy]) {}
     }
 }
 
@@ -193,4 +235,19 @@ pub fn exit() -> ! {
     loop {
         cortex_m::asm::bkpt();
     }
+}
+
+fn get_report(pins: &mut [Pin<DynPinId, FunctionSioInput, PullUp>; 3]) -> JoystickReport {
+    // Read out 8 buttons first
+    let mut buttons = 0;
+    for (idx, pin) in pins[..3].iter_mut().enumerate() {
+        if pin.is_low().unwrap() {
+            buttons |= 1 << idx;
+        }
+    }
+
+    let x = 0;
+    let y = 0;
+
+    JoystickReport { buttons, x, y }
 }
