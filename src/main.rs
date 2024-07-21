@@ -33,8 +33,13 @@ use bsp::hal::{
     spi,
     watchdog::Watchdog,
 };
+use usbd_human_interface_device::usb_class::UsbHidBuilderError;
 
 use crate::hal::usb::UsbBus;
+
+pub mod reports;
+
+use reports::*;
 
 #[entry]
 fn main() -> ! {
@@ -78,7 +83,7 @@ fn main() -> ! {
     ));
 
     let mut joy = UsbHidClassBuilder::new()
-        .add_device(usbd_human_interface_device::device::joystick::JoystickConfig::default())
+        .add_device(AllButtonConfig::default())
         .build(&usb_bus);
 
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
@@ -237,7 +242,7 @@ pub fn exit() -> ! {
     }
 }
 
-fn get_report(pins: &mut [Pin<DynPinId, FunctionSioInput, PullUp>; 3]) -> JoystickReport {
+fn get_report(pins: &mut [Pin<DynPinId, FunctionSioInput, PullUp>; 3]) -> AllButtonReport {
     // Read out 8 buttons first
     let mut buttons = 0;
     for (idx, pin) in pins[..3].iter_mut().enumerate() {
@@ -246,8 +251,5 @@ fn get_report(pins: &mut [Pin<DynPinId, FunctionSioInput, PullUp>; 3]) -> Joysti
         }
     }
 
-    let x = 0;
-    let y = 0;
-
-    JoystickReport { buttons, x, y }
+    AllButtonReport { buttons }
 }
