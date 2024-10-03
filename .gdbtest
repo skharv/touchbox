@@ -1,0 +1,8 @@
+file "./target/thumbv6m-none-eabi/debug/touchbox"
+
+target remote :3334
+
+load
+break main
+
+continue

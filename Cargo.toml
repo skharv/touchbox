@@ -8,7 +8,7 @@ runner = "probe-run --chip RP2040"
 
 [dependencies]
 panic-halt = "0.2.0"
-embedded-hal = { version = "0.2.7", features = ["unproven"] }
+embedded-hal = "1.0.0"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 embedded-graphics-core = "0.4.0"
@@ -24,6 +24,8 @@ usb-device = "0.3"
 usbd-hid = "0.7.0"
 usbd-human-interface-device = "0.5.0"
 packed_struct = { version = "0.10", default-features = false }
+#mcp23017 = { git = "https://github.com/lucazulian/mcp23017.git" }
+mcp230xx = "1.0.1"
 
 [profile.dev]
 panic = "abort"
