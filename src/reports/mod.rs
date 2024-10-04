@@ -20,19 +20,22 @@ pub const ALL_BUTTON_DESCRIPTOR: &[u8] = &[
     0xA1, 0x01,        // Collection (Application)
     0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        //   Usage Minimum (0x01)
-    0x29, 0x20,        //   Usage Maximum (0x20)
+    0x29, 0x20,        //   Usage Maximum (0x18)
     0x15, 0x00,        //   Logical Minimum (0)
     0x25, 0x01,        //   Logical Maximum (1)
     0x75, 0x01,        //   Report Size (1)
-    0x95, 0x18,        //   Report Count (24)
+    0x95, 0x20,        //   Report Count (24)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     0xC0,              // End Collection
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default, PackedStruct)]
-#[packed_struct(endian = "lsb", size_bytes = "3")]
+#[packed_struct(endian = "lsb", size_bytes = "4")]
 pub struct AllButtonReport {
-    pub buttons: u8,
+    pub a1: u8,
+    pub b1: u8,
+    pub a2: u8,
+    pub b2: u8,
 }
 
 pub struct AllButton<'a, B: UsbBus> {
@@ -74,7 +77,7 @@ impl<'a> Default for AllButtonConfig<'a> {
             .unwrap()
             .boot_device(InterfaceProtocol::None)
             .description("Joystick")
-            .in_endpoint(10.millis())
+            .in_endpoint(1.millis())
             .unwrap()
             .without_out_endpoint()
             .build();

@@ -226,23 +226,28 @@ fn main() -> ! {
         .unwrap();
     mcp.set_direction(Mcp23017::A1, mcp230xx::Direction::Input)
         .unwrap();
+    mcp.set_direction(Mcp23017::A2, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A3, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A4, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A5, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A6, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A7, mcp230xx::Direction::Input)
+        .unwrap();
 
     let text_style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
     Text::new("qwer", Point::new(30, 80), text_style)
         .draw(&mut display)
         .unwrap();
 
-    //mcp.set_direction(Mcp23017::A0, Direction::Input).unwrap();
-    // circle
-
-    //let mcpstatus = mcp.read_gpioab().unwrap();
-    //let mcp_read_a = mcp.read_gpio(mcp23017::Port::GPIOA).unwrap();
-
-    //let mut input_pins: [Pin<DynPinId, FunctionSioInput, PullUp>; 1] =
-    //  [pins.gpio26.into_pull_up_input().into_dyn_pin()];
-
     let mut input_count_down = timer.count_down();
     input_count_down.start(1.millis());
+
+    let mut buttons: [Level; 8] = [Level::Low; 8];
 
     loop {
         if input_count_down.wait().is_ok() {
@@ -257,34 +262,26 @@ fn main() -> ! {
                     _ => (),
                 };
             }
-        }
-        let mut buttons = [false, false];
 
-        let a = mcp.gpio(Mcp23017::A0).unwrap();
-        let b = mcp.gpio(Mcp23017::A1).unwrap();
+            buttons[0] = mcp.gpio(Mcp23017::A0).unwrap();
+            buttons[1] = mcp.gpio(Mcp23017::A1).unwrap();
+            buttons[2] = mcp.gpio(Mcp23017::A2).unwrap();
+            buttons[3] = mcp.gpio(Mcp23017::A3).unwrap();
+            buttons[4] = mcp.gpio(Mcp23017::A4).unwrap();
+            buttons[5] = mcp.gpio(Mcp23017::A5).unwrap();
+            buttons[6] = mcp.gpio(Mcp23017::A6).unwrap();
+            buttons[7] = mcp.gpio(Mcp23017::A7).unwrap();
 
-        if a == Level::High {
-            buttons[0] = true;
-        }
-        if b == Level::High {
-            buttons[1] = true;
-        }
-        //if mcp.gpio(Mcp23017::A0).unwrap() == Level::High {
-        //    buttons[0] = true;
-        //}
-        //if mcp.gpio(Mcp23017::A1).unwrap() == Level::High {
-        //    buttons[1] = true;
-        //}
-
-        match joy.device().write_report(&get_report(&mut buttons)) {
-            Err(UsbHidError::WouldBlock) => {}
-            Ok(_) => {}
-            Err(e) => {
-                core::panic!("Failed to write joystick report: {:?}", e)
+            match joy.device().write_report(&get_report(&mut buttons)) {
+                Err(UsbHidError::WouldBlock) => {}
+                Ok(_) => {}
+                Err(e) => {
+                    core::panic!("Failed to write joystick report: {:?}", e)
+                }
             }
         }
 
-        if usb_dev.poll(&mut [&mut joy]) {}
+        if usb_dev.poll(&mut [&mut joy]) {};
     }
 }
 
@@ -294,13 +291,18 @@ pub fn exit() -> ! {
     }
 }
 
-fn get_report(pins: &mut [bool; 2]) -> AllButtonReport {
+fn get_report(pins: &mut [Level; 8]) -> AllButtonReport {
     let mut buttons = 0;
-    for (idx, pressed) in pins[..2].iter_mut().enumerate() {
-        if !*pressed {
+    for (idx, pressed) in pins[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
             buttons |= 1 << idx;
         }
     }
 
-    AllButtonReport { buttons }
+    AllButtonReport {
+        a1: buttons,
+        b1: 0,
+        a2: 0,
+        b2: buttons,
+    }
 }
