@@ -1,18 +1,20 @@
 #![no_std]
 #![no_main]
 
+use crate::{hal::I2C, pac::I2C0};
+use cortex_m::prelude::_embedded_hal_timer_CountDown;
 use cst816s::TouchGesture;
-use embedded_hal::digital::v2::{InputPin, OutputPin};
-use embedded_hal::prelude::_embedded_hal_timer_CountDown;
+use embedded_graphics::mono_font::iso_8859_1::FONT_10X20;
+use embedded_graphics::mono_font::MonoTextStyle;
+use embedded_graphics::text::Text;
+use mcp230xx::{Level, Mcp23017, Mcp230xx};
 use panic_halt as _;
+use reports::{AllButtonReport, *};
 use rp_pico as bsp;
-use rp_pico::hal::gpio::{
-    DynPinId, FunctionI2C, FunctionPwm, FunctionSioInput, Pin, PullDown, PullUp,
-};
-use rp_pico::hal::I2C;
+use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
+use rp_pico::hal::gpio::{FunctionI2C, FunctionPwm, Pin};
 #[allow(clippy::wildcard_imports)]
 use usb_device::{class_prelude::*, prelude::*};
-use usbd_human_interface_device::device::joystick::JoystickReport;
 use usbd_human_interface_device::prelude::*;
 
 use bsp::entry;
@@ -35,6 +37,8 @@ use bsp::hal::{
 };
 
 use crate::hal::usb::UsbBus;
+
+mod reports;
 
 #[entry]
 fn main() -> ! {
@@ -78,7 +82,7 @@ fn main() -> ! {
     ));
 
     let mut joy = UsbHidClassBuilder::new()
-        .add_device(usbd_human_interface_device::device::joystick::JoystickConfig::default())
+        .add_device(AllButtonConfig::default())
         .build(&usb_bus);
 
     let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
@@ -105,7 +109,7 @@ fn main() -> ! {
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
         8_000_000u32.Hz(),
-        &embedded_hal::spi::MODE_0,
+        embedded_hal::spi::MODE_0,
     );
 
     let dc_pin = pins.gpio8.into_push_pull_output();
@@ -154,7 +158,7 @@ fn main() -> ! {
     let sda_pin = pins.gpio6.into_function::<FunctionI2C>();
     let scl_pin = pins.gpio7.into_function::<FunctionI2C>();
 
-    let i2c0_pins = I2C::i2c1(
+    let i2c1_pins = hal::I2C::i2c1(
         pac.I2C1,
         sda_pin.reconfigure(),
         scl_pin.reconfigure(),
@@ -164,7 +168,7 @@ fn main() -> ! {
     );
 
     // Touchpad setup
-    let mut touchpad = cst816s::CST816S::new(i2c0_pins, gpio21, gpio22);
+    let mut touchpad = cst816s::CST816S::new(i2c1_pins, gpio21, gpio22);
     touchpad.setup(&mut delay).unwrap();
 
     // screen outline for the round 1.28 inch Waveshare display
@@ -177,7 +181,7 @@ fn main() -> ! {
     Triangle::new(
         Point::new(50, 32 + yoffset),
         Point::new(50 + 32, 32 + yoffset),
-        Point::new(50 + 8, yoffset),
+        Point::new(50 + 16, yoffset),
     )
     .into_styled(style)
     .draw(&mut display)
@@ -189,20 +193,61 @@ fn main() -> ! {
         .draw(&mut display)
         .unwrap();
 
-    // circle
-    Circle::new(Point::new(170, yoffset), 32)
-        .into_styled(style)
+    // Setup I2C for buttons
+    let sda_pin0 = pins.gpio28.into_function::<FunctionI2C>();
+    let scl_pin0 = pins.gpio17.into_function::<FunctionI2C>();
+
+    let i2c0_pins = hal::I2C::i2c0(
+        pac.I2C0,
+        sda_pin0.reconfigure(),
+        scl_pin0.reconfigure(),
+        400.kHz(),
+        &mut pac.RESETS,
+        &clocks.system_clock,
+    );
+
+    //let mut mcp = MCP23017::default(i2c0_pins).unwrap();
+    //mcp.init_hardware().unwrap();
+    //let res = mcp.digital_read(0);
+
+    let mut mcp = Mcp230xx::<
+        I2C<
+            I2C0,
+            (
+                Pin<Gpio28, FunctionI2C, gpio::PullUp>,
+                Pin<Gpio17, FunctionI2C, gpio::PullUp>,
+            ),
+        >,
+        Mcp23017,
+    >::new(i2c0_pins, 0x27)
+    .unwrap();
+
+    mcp.set_direction(Mcp23017::A0, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A1, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A2, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A3, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A4, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A5, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A6, mcp230xx::Direction::Input)
+        .unwrap();
+    mcp.set_direction(Mcp23017::A7, mcp230xx::Direction::Input)
+        .unwrap();
+
+    let text_style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
+    Text::new("qwer", Point::new(30, 80), text_style)
         .draw(&mut display)
         .unwrap();
 
-    let mut input_pins: [Pin<DynPinId, FunctionSioInput, PullUp>; 3] = [
-        pins.gpio26.into_pull_up_input().into_dyn_pin(),
-        pins.gpio27.into_pull_up_input().into_dyn_pin(),
-        pins.gpio28.into_pull_up_input().into_dyn_pin(),
-    ];
-
     let mut input_count_down = timer.count_down();
     input_count_down.start(1.millis());
+
+    let mut buttons: [Level; 8] = [Level::Low; 8];
 
     loop {
         if input_count_down.wait().is_ok() {
@@ -218,7 +263,16 @@ fn main() -> ! {
                 };
             }
 
-            match joy.device().write_report(&get_report(&mut input_pins)) {
+            buttons[0] = mcp.gpio(Mcp23017::A0).unwrap();
+            buttons[1] = mcp.gpio(Mcp23017::A1).unwrap();
+            buttons[2] = mcp.gpio(Mcp23017::A2).unwrap();
+            buttons[3] = mcp.gpio(Mcp23017::A3).unwrap();
+            buttons[4] = mcp.gpio(Mcp23017::A4).unwrap();
+            buttons[5] = mcp.gpio(Mcp23017::A5).unwrap();
+            buttons[6] = mcp.gpio(Mcp23017::A6).unwrap();
+            buttons[7] = mcp.gpio(Mcp23017::A7).unwrap();
+
+            match joy.device().write_report(&get_report(&mut buttons)) {
                 Err(UsbHidError::WouldBlock) => {}
                 Ok(_) => {}
                 Err(e) => {
@@ -227,7 +281,7 @@ fn main() -> ! {
             }
         }
 
-        if usb_dev.poll(&mut [&mut joy]) {}
+        if usb_dev.poll(&mut [&mut joy]) {};
     }
 }
 
@@ -237,17 +291,18 @@ pub fn exit() -> ! {
     }
 }
 
-fn get_report(pins: &mut [Pin<DynPinId, FunctionSioInput, PullUp>; 3]) -> JoystickReport {
-    // Read out 8 buttons first
+fn get_report(pins: &mut [Level; 8]) -> AllButtonReport {
     let mut buttons = 0;
-    for (idx, pin) in pins[..3].iter_mut().enumerate() {
-        if pin.is_low().unwrap() {
+    for (idx, pressed) in pins[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
             buttons |= 1 << idx;
         }
     }
 
-    let x = 0;
-    let y = 0;
-
-    JoystickReport { buttons, x, y }
+    AllButtonReport {
+        a1: buttons,
+        b1: 0,
+        a2: 0,
+        b2: buttons,
+    }
 }
