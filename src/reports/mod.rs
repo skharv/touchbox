@@ -1,4 +1,4 @@
-use core::{default::Default, fmt::Debug};
+use core::default::Default;
 use fugit::ExtU32;
 use packed_struct::prelude::*;
 use usb_device::bus::UsbBus;
@@ -24,7 +24,7 @@ pub const ALL_BUTTON_DESCRIPTOR: &[u8] = &[
     0x15, 0x00,        //   Logical Minimum (0)
     0x25, 0x01,        //   Logical Maximum (1)
     0x75, 0x01,        //   Report Size (1)
-    0x95, 0x20,        //   Report Count (32)
+    0x95, 0x18,        //   Report Count (24)
     0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
     0xC0,              // End Collection
 ];
@@ -41,10 +41,7 @@ pub struct AllButton<'a, B: UsbBus> {
 
 impl<'a, B: UsbBus> AllButton<'a, B> {
     pub fn write_report(&mut self, report: &AllButtonReport) -> Result<(), UsbHidError> {
-        let data = report.pack().map_err(|_| {
-            error!("Error packing AllButtonReport");
-            UsbHidError::SerializationError
-        })?;
+        let data = report.pack().map_err(|_| UsbHidError::SerializationError)?;
         self.interface
             .write_report(&data)
             .map(|_| ())
@@ -73,14 +70,16 @@ pub struct AllButtonConfig<'a> {
 impl<'a> Default for AllButtonConfig<'a> {
     #[must_use]
     fn default() -> Self {
-        Self::new(
-            unwrap!(unwrap!(InterfaceBuilder::new(ALL_BUTTON_DESCRIPTOR))
-                .boot_device(InterfaceProtocol::None)
-                .description("Joystick")
-                .in_endpoint(1.millis()))
+        let builder = InterfaceBuilder::new(ALL_BUTTON_DESCRIPTOR)
+            .unwrap()
+            .boot_device(InterfaceProtocol::None)
+            .description("Joystick")
+            .in_endpoint(10.millis())
+            .unwrap()
             .without_out_endpoint()
-            .build(),
-        )
+            .build();
+
+        Self::new(builder)
     }
 }
 
