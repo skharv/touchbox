@@ -30,12 +30,11 @@ pub const CLASSIC_DESCRIPTOR: &[u8] = &[
 ];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default, PackedStruct)]
-#[packed_struct(endian = "lsb", size_bytes = "4")]
+#[packed_struct(endian = "lsb", size_bytes = "3")]
 pub struct ClassicReport {
     pub a1: u8,
     pub b1: u8,
     pub a2: u8,
-    pub b2: u8,
 }
 
 pub struct Classic<'a, B: UsbBus> {

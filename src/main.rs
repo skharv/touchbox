@@ -10,11 +10,10 @@ use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::text::Text;
 use mcp230xx::{Level, Mcp23017, Mcp230xx};
 use panic_halt as _;
-use reports::all_button_layout::{AllButtonReport, *};
 use rp_pico as bsp;
 use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
 use rp_pico::hal::gpio::{FunctionI2C, FunctionPwm, Pin};
-use usb_device::{class_prelude::*, prelude::*};
+use usb_device::{class, class_prelude::*, prelude::*};
 use usbd_human_interface_device::prelude::*;
 
 use bsp::entry;
@@ -42,6 +41,10 @@ mod inputs;
 mod reports;
 
 use inputs::fgc;
+use inputs::smash;
+
+use reports::all_button_layout;
+use reports::classic_layout::{self, ClassicReport};
 
 #[entry]
 fn main() -> ! {
@@ -84,17 +87,29 @@ fn main() -> ! {
         &mut pac.RESETS,
     ));
 
-    let mut joy = UsbHidClassBuilder::new()
-        .add_device(AllButtonConfig::default())
+    let mut all_button_joy = UsbHidClassBuilder::new()
+        .add_device(all_button_layout::AllButtonConfig::default())
         .build(&usb_bus);
 
-    let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
+    let mut all_button_usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
         .strings(&[StringDescriptors::default()
             .manufacturer("skharv")
-            .product("touchbox")
+            .product("button box")
             .serial_number("TEST")])
         .unwrap()
         .build();
+
+    //let mut classic_joy = UsbHidClassBuilder::new()
+    //    .add_device(classic_layout::ClassicConfig::default())
+    //    .build(&usb_bus);
+    //
+    //let mut classic_usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
+    //    .strings(&[StringDescriptors::default()
+    //        .manufacturer("skharv")
+    //        .product("smash box")
+    //        .serial_number("TEST")])
+    //    .unwrap()
+    //    .build();
 
     // These are implicitly used by the spi driver if they are in the correct mode
     let spi_sclk = pins.gpio10.into_function::<gpio::FunctionSpi>();
@@ -226,6 +241,7 @@ fn main() -> ! {
     // Input Polling rate
     let mut input_count_down = timer.count_down();
     input_count_down.start(1.millis());
+    let mut all_button = true;
 
     // Begin Loop
     loop {
@@ -243,26 +259,56 @@ fn main() -> ! {
                 };
             }
 
-            let mut bank_a1 = fgc::read_bank_a1(&mut mcp);
-            let mut bank_b1 = fgc::read_bank_b1(&mut mcp);
-            let mut bank_a2 = [Level::Low; 8];
-            let mut bank_b2 = [Level::Low; 8];
+            if all_button {
+                let mut bank_a1 = fgc::read_bank_a1(&mut mcp);
+                let mut bank_b1 = fgc::read_bank_b1(&mut mcp);
+                let mut bank_a2 = [Level::Low; 8];
+                let mut bank_b2 = [Level::Low; 8];
 
-            match joy.device().write_report(&get_report(
-                &mut bank_a1,
-                &mut bank_b1,
-                &mut bank_a2,
-                &mut bank_b2,
-            )) {
-                Err(UsbHidError::WouldBlock) => {}
-                Ok(_) => {}
-                Err(e) => {
-                    core::panic!("Failed to write joystick report: {:?}", e)
+                //if bank_a1[4] == Level::High {
+                //    all_button = false;
+                //}
+
+                match all_button_joy.device().write_report(&get_all_button_report(
+                    &mut bank_a1,
+                    &mut bank_b1,
+                    &mut bank_a2,
+                    &mut bank_b2,
+                )) {
+                    Err(UsbHidError::WouldBlock) => {}
+                    Ok(_) => {}
+                    Err(e) => {
+                        core::panic!("Failed to write joystick report: {:?}", e)
+                    }
                 }
+            } else {
+                let mut bank_a1 = smash::read_bank_a1(&mut mcp);
+                let mut bank_b1 = smash::read_bank_b1(&mut mcp);
+                let mut bank_a2 = [Level::Low; 8];
+
+                if bank_a1[0] == Level::High {
+                    all_button = true;
+                }
+
+                //match classic_joy.device().write_report(&get_classic_report(
+                //    &mut bank_a1,
+                //    &mut bank_b1,
+                //    &mut bank_a2,
+                //)) {
+                //    Err(UsbHidError::WouldBlock) => {}
+                //    Ok(_) => {}
+                //    Err(e) => {
+                //        core::panic!("Failed to write joystick report: {:?}", e)
+                //    }
+                //}
             }
         }
 
-        if usb_dev.poll(&mut [&mut joy]) {};
+        if all_button {
+            if all_button_usb_dev.poll(&mut [&mut all_button_joy]) {};
+            //} else {
+            //    if classic_usb_dev.poll(&mut [&mut classic_joy]) {};
+        }
     }
 }
 
@@ -272,12 +318,12 @@ pub fn exit() -> ! {
     }
 }
 
-fn get_report(
+fn get_all_button_report(
     bank_a1: &mut [Level; 8],
     bank_b1: &mut [Level; 8],
     bank_a2: &mut [Level; 8],
     bank_b2: &mut [Level; 8],
-) -> AllButtonReport {
+) -> all_button_layout::AllButtonReport {
     let mut a1 = 0;
     for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
         if *pressed == Level::High {
@@ -305,5 +351,34 @@ fn get_report(
             b2 |= 1 << idx;
         }
     }
-    AllButtonReport { a1, b1, a2, b2 }
+    all_button_layout::AllButtonReport { a1, b1, a2, b2 }
+}
+
+fn get_classic_report(
+    bank_a1: &mut [Level; 8],
+    bank_b1: &mut [Level; 8],
+    bank_a2: &mut [Level; 8],
+) -> classic_layout::ClassicReport {
+    let mut a1 = 0;
+    for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            a1 |= 1 << idx;
+        }
+    }
+
+    let mut b1 = 0;
+    for (idx, pressed) in bank_b1[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            b1 |= 1 << idx;
+        }
+    }
+
+    let mut a2 = 0;
+    for (idx, pressed) in bank_a2[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            a2 |= 1 << idx;
+        }
+    }
+
+    classic_layout::ClassicReport { a1, b1, a2 }
 }
