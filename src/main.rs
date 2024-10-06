@@ -4,16 +4,16 @@
 use crate::{hal::I2C, pac::I2C0};
 use cortex_m::prelude::_embedded_hal_timer_CountDown;
 use cst816s::TouchGesture;
+#[allow(clippy::wildcard_imports)]
 use embedded_graphics::mono_font::iso_8859_1::FONT_10X20;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::text::Text;
 use mcp230xx::{Level, Mcp23017, Mcp230xx};
 use panic_halt as _;
-use reports::{AllButtonReport, *};
+use reports::all_button_layout::{AllButtonReport, *};
 use rp_pico as bsp;
 use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
 use rp_pico::hal::gpio::{FunctionI2C, FunctionPwm, Pin};
-#[allow(clippy::wildcard_imports)]
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_human_interface_device::prelude::*;
 
@@ -38,7 +38,10 @@ use bsp::hal::{
 
 use crate::hal::usb::UsbBus;
 
+mod inputs;
 mod reports;
+
+use inputs::fgc;
 
 #[entry]
 fn main() -> ! {
@@ -133,28 +136,43 @@ fn main() -> ! {
 
     // Create display driver
     let mut display = gc9a01a::GC9A01A::new(spi_interface, rst_pin, channel);
-    // Bring out of reset
     display.reset(&mut delay).unwrap();
-    // Initialize registers
     display.initialize(&mut delay).unwrap();
-    // Fill screen with single color
     display.clear(Rgb565::CSS_IVORY).unwrap();
     display.set_backlight(55000);
-    // Turn on backlight
-    //let mut led_pin = pins.led.into_push_pull_output();
-    //led_pin.set_high().unwrap();
 
+    // Draw Stuff
     let yoffset = 100;
-
+    let text_style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
     let style = PrimitiveStyleBuilder::new()
         .stroke_width(5)
         .stroke_color(Rgb565::CSS_ORCHID)
         .build();
 
-    let gpio21 = pins.gpio21.into_pull_up_input();
-    let gpio22 = pins.gpio22.into_push_pull_output();
+    Circle::new(Point::new(1, 1), 238)
+        .into_styled(style)
+        .draw(&mut display)
+        .unwrap();
 
-    // Setup I2C for touchpad
+    Triangle::new(
+        Point::new(50, 32 + yoffset),
+        Point::new(50 + 32, 32 + yoffset),
+        Point::new(50 + 16, yoffset),
+    )
+    .into_styled(style)
+    .draw(&mut display)
+    .unwrap();
+
+    Rectangle::new(Point::new(110, yoffset), Size::new_equal(32))
+        .into_styled(style)
+        .draw(&mut display)
+        .unwrap();
+
+    Text::new("qwer", Point::new(30, 80), text_style)
+        .draw(&mut display)
+        .unwrap();
+
+    // Touchpad setup
     let sda_pin = pins.gpio6.into_function::<FunctionI2C>();
     let scl_pin = pins.gpio7.into_function::<FunctionI2C>();
 
@@ -167,33 +185,13 @@ fn main() -> ! {
         &clocks.peripheral_clock,
     );
 
-    // Touchpad setup
+    let gpio21 = pins.gpio21.into_pull_up_input();
+    let gpio22 = pins.gpio22.into_push_pull_output();
+
     let mut touchpad = cst816s::CST816S::new(i2c1_pins, gpio21, gpio22);
     touchpad.setup(&mut delay).unwrap();
 
-    // screen outline for the round 1.28 inch Waveshare display
-    Circle::new(Point::new(1, 1), 238)
-        .into_styled(style)
-        .draw(&mut display)
-        .unwrap();
-
-    // triangle
-    Triangle::new(
-        Point::new(50, 32 + yoffset),
-        Point::new(50 + 32, 32 + yoffset),
-        Point::new(50 + 16, yoffset),
-    )
-    .into_styled(style)
-    .draw(&mut display)
-    .unwrap();
-
-    // square
-    Rectangle::new(Point::new(110, yoffset), Size::new_equal(32))
-        .into_styled(style)
-        .draw(&mut display)
-        .unwrap();
-
-    // Setup I2C for buttons
+    // Setup MCP23017
     let sda_pin0 = pins.gpio28.into_function::<FunctionI2C>();
     let scl_pin0 = pins.gpio17.into_function::<FunctionI2C>();
 
@@ -203,12 +201,8 @@ fn main() -> ! {
         scl_pin0.reconfigure(),
         400.kHz(),
         &mut pac.RESETS,
-        &clocks.system_clock,
+        &clocks.peripheral_clock,
     );
-
-    //let mut mcp = MCP23017::default(i2c0_pins).unwrap();
-    //mcp.init_hardware().unwrap();
-    //let res = mcp.digital_read(0);
 
     let mut mcp = Mcp230xx::<
         I2C<
@@ -222,35 +216,21 @@ fn main() -> ! {
     >::new(i2c0_pins, 0x27)
     .unwrap();
 
-    mcp.set_direction(Mcp23017::A0, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A1, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A2, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A3, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A4, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A5, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A6, mcp230xx::Direction::Input)
-        .unwrap();
-    mcp.set_direction(Mcp23017::A7, mcp230xx::Direction::Input)
-        .unwrap();
+    // Initialize all the buttons
+    inputs::init_button(&mut mcp, Mcp23017::A0);
+    inputs::init_button(&mut mcp, Mcp23017::A1);
+    inputs::init_button(&mut mcp, Mcp23017::A2);
+    inputs::init_button(&mut mcp, Mcp23017::A3);
+    inputs::init_button(&mut mcp, Mcp23017::A4);
 
-    let text_style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
-    Text::new("qwer", Point::new(30, 80), text_style)
-        .draw(&mut display)
-        .unwrap();
-
+    // Input Polling rate
     let mut input_count_down = timer.count_down();
     input_count_down.start(1.millis());
 
-    let mut buttons: [Level; 8] = [Level::Low; 8];
-
+    // Begin Loop
     loop {
         if input_count_down.wait().is_ok() {
+            // Touchpad Gestures
             if let Some(evt) = touchpad.read_one_touch_event(true) {
                 match evt.gesture {
                     TouchGesture::LongPress => {
@@ -263,16 +243,17 @@ fn main() -> ! {
                 };
             }
 
-            buttons[0] = mcp.gpio(Mcp23017::A0).unwrap();
-            buttons[1] = mcp.gpio(Mcp23017::A1).unwrap();
-            buttons[2] = mcp.gpio(Mcp23017::A2).unwrap();
-            buttons[3] = mcp.gpio(Mcp23017::A3).unwrap();
-            buttons[4] = mcp.gpio(Mcp23017::A4).unwrap();
-            buttons[5] = mcp.gpio(Mcp23017::A5).unwrap();
-            buttons[6] = mcp.gpio(Mcp23017::A6).unwrap();
-            buttons[7] = mcp.gpio(Mcp23017::A7).unwrap();
+            let mut bank_a1 = fgc::read_bank_a1(&mut mcp);
+            let mut bank_b1 = fgc::read_bank_b1(&mut mcp);
+            let mut bank_a2 = [Level::Low; 8];
+            let mut bank_b2 = [Level::Low; 8];
 
-            match joy.device().write_report(&get_report(&mut buttons)) {
+            match joy.device().write_report(&get_report(
+                &mut bank_a1,
+                &mut bank_b1,
+                &mut bank_a2,
+                &mut bank_b2,
+            )) {
                 Err(UsbHidError::WouldBlock) => {}
                 Ok(_) => {}
                 Err(e) => {
@@ -291,18 +272,38 @@ pub fn exit() -> ! {
     }
 }
 
-fn get_report(pins: &mut [Level; 8]) -> AllButtonReport {
-    let mut buttons = 0;
-    for (idx, pressed) in pins[..8].iter_mut().enumerate() {
+fn get_report(
+    bank_a1: &mut [Level; 8],
+    bank_b1: &mut [Level; 8],
+    bank_a2: &mut [Level; 8],
+    bank_b2: &mut [Level; 8],
+) -> AllButtonReport {
+    let mut a1 = 0;
+    for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
         if *pressed == Level::High {
-            buttons |= 1 << idx;
+            a1 |= 1 << idx;
         }
     }
 
-    AllButtonReport {
-        a1: buttons,
-        b1: 0,
-        a2: 0,
-        b2: buttons,
+    let mut b1 = 0;
+    for (idx, pressed) in bank_b1[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            b1 |= 1 << idx;
+        }
     }
+
+    let mut a2 = 0;
+    for (idx, pressed) in bank_a2[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            a2 |= 1 << idx;
+        }
+    }
+
+    let mut b2 = 0;
+    for (idx, pressed) in bank_b2[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            b2 |= 1 << idx;
+        }
+    }
+    AllButtonReport { a1, b1, a2, b2 }
 }
