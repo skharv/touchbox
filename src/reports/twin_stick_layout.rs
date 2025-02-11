@@ -32,18 +32,18 @@ pub const CLASSIC_DESCRIPTOR: &[u8] = &[
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default, PackedStruct)]
 #[packed_struct(endian = "lsb", size_bytes = "3")]
-pub struct ClassicReport {
+pub struct TwinStickReport {
     pub a1: u8,
     pub b1: u8,
     pub a2: u8,
 }
 
-pub struct Classic<'a, B: UsbBus> {
+pub struct TwinStick<'a, B: UsbBus> {
     interface: Interface<'a, B, InBytes8, OutNone, ReportSingle>,
 }
 
-impl<'a, B: UsbBus> Classic<'a, B> {
-    pub fn write_report(&mut self, report: &ClassicReport) -> Result<(), UsbHidError> {
+impl<'a, B: UsbBus> TwinStick<'a, B> {
+    pub fn write_report(&mut self, report: &TwinStickReport) -> Result<(), UsbHidError> {
         let data = report.pack().map_err(|_| UsbHidError::SerializationError)?;
         self.interface
             .write_report(&data)
@@ -52,7 +52,7 @@ impl<'a, B: UsbBus> Classic<'a, B> {
     }
 }
 
-impl<'a, B: UsbBus> DeviceClass<'a> for Classic<'a, B> {
+impl<'a, B: UsbBus> DeviceClass<'a> for TwinStick<'a, B> {
     type I = Interface<'a, B, InBytes8, OutNone, ReportSingle>;
 
     fn interface(&mut self) -> &mut Self::I {
@@ -66,11 +66,11 @@ impl<'a, B: UsbBus> DeviceClass<'a> for Classic<'a, B> {
     }
 }
 
-pub struct ClassicConfig<'a> {
+pub struct TwinStickConfig<'a> {
     interface: InterfaceConfig<'a, InBytes8, OutNone, ReportSingle>,
 }
 
-impl<'a> Default for ClassicConfig<'a> {
+impl<'a> Default for TwinStickConfig<'a> {
     #[must_use]
     fn default() -> Self {
         let builder = InterfaceBuilder::new(CLASSIC_DESCRIPTOR)
@@ -86,15 +86,15 @@ impl<'a> Default for ClassicConfig<'a> {
     }
 }
 
-impl<'a> ClassicConfig<'a> {
+impl<'a> TwinStickConfig<'a> {
     #[must_use]
     pub fn new(interface: InterfaceConfig<'a, InBytes8, OutNone, ReportSingle>) -> Self {
         Self { interface }
     }
 }
 
-impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for ClassicConfig<'a> {
-    type Allocated = Classic<'a, B>;
+impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for TwinStickConfig<'a> {
+    type Allocated = TwinStick<'a, B>;
 
     fn allocate(self, usb_alloc: &'a UsbBusAllocator<B>) -> Self::Allocated {
         Self::Allocated {
@@ -103,11 +103,11 @@ impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for ClassicConfig<'a> {
     }
 }
 
-pub fn get_classic_report(
+pub fn get_twin_stick_report(
     bank_a1: &mut [Level; 8],
     bank_b1: &mut [Level; 8],
     bank_a2: &mut [Level; 8],
-) -> ClassicReport {
+) -> TwinStickReport {
     let mut a1 = 0;
     for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
         if *pressed == Level::High {
@@ -129,5 +129,5 @@ pub fn get_classic_report(
         }
     }
 
-    ClassicReport { a1, b1, a2 }
+    TwinStickReport { a1, b1, a2 }
 }

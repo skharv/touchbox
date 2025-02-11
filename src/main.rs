@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+
 use crate::{hal::I2C, pac::I2C0};
 use cortex_m::prelude::_embedded_hal_timer_CountDown;
 use cst816s::TouchGesture;
@@ -13,7 +15,7 @@ use panic_halt as _;
 use rp_pico as bsp;
 use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
 use rp_pico::hal::gpio::{FunctionI2C, FunctionPwm, Pin};
-use usb_device::{class, class_prelude::*, prelude::*};
+use usb_device::{class_prelude::*, prelude::*};
 use usbd_human_interface_device::prelude::*;
 
 use bsp::entry;
@@ -40,11 +42,12 @@ use crate::hal::usb::UsbBus;
 mod inputs;
 mod reports;
 
-use inputs::fgc;
+use inputs::allbtn;
 use inputs::smash;
 
-use reports::all_button_layout;
-use reports::classic_layout::{self, ClassicReport};
+use reports::classic_layout;
+use reports::twin_stick_layout;
+use reports::{all_button_layout, all_button_layout::get_all_button_report};
 
 #[entry]
 fn main() -> ! {
@@ -98,18 +101,6 @@ fn main() -> ! {
             .serial_number("TEST")])
         .unwrap()
         .build();
-
-    //let mut classic_joy = UsbHidClassBuilder::new()
-    //    .add_device(classic_layout::ClassicConfig::default())
-    //    .build(&usb_bus);
-    //
-    //let mut classic_usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0001))
-    //    .strings(&[StringDescriptors::default()
-    //        .manufacturer("skharv")
-    //        .product("smash box")
-    //        .serial_number("TEST")])
-    //    .unwrap()
-    //    .build();
 
     // These are implicitly used by the spi driver if they are in the correct mode
     let spi_sclk = pins.gpio10.into_function::<gpio::FunctionSpi>();
@@ -219,7 +210,9 @@ fn main() -> ! {
         &clocks.peripheral_clock,
     );
 
-    let mut mcp = Mcp230xx::<
+    let i2c_ref_cell = RefCell::new(i2c0_pins);
+
+    let mut mcp1 = Mcp230xx::<
         I2C<
             I2C0,
             (
@@ -228,15 +221,57 @@ fn main() -> ! {
             ),
         >,
         Mcp23017,
-    >::new(i2c0_pins, 0x27)
+    >::new(&i2c_ref_cell, 0x27)
+    .unwrap();
+
+    let mut mcp2 = Mcp230xx::<
+        I2C<
+            I2C0,
+            (
+                Pin<Gpio28, FunctionI2C, gpio::PullUp>,
+                Pin<Gpio17, FunctionI2C, gpio::PullUp>,
+            ),
+        >,
+        Mcp23017,
+    >::new(&i2c_ref_cell, 0x26)
     .unwrap();
 
     // Initialize all the buttons
-    inputs::init_button(&mut mcp, Mcp23017::A0);
-    inputs::init_button(&mut mcp, Mcp23017::A1);
-    inputs::init_button(&mut mcp, Mcp23017::A2);
-    inputs::init_button(&mut mcp, Mcp23017::A3);
-    inputs::init_button(&mut mcp, Mcp23017::A4);
+    inputs::init_button(&mut mcp1, Mcp23017::A0);
+    inputs::init_button(&mut mcp1, Mcp23017::A1);
+    inputs::init_button(&mut mcp1, Mcp23017::A2);
+    inputs::init_button(&mut mcp1, Mcp23017::A3);
+    inputs::init_button(&mut mcp1, Mcp23017::A4);
+    inputs::init_button(&mut mcp1, Mcp23017::A5);
+    inputs::init_button(&mut mcp1, Mcp23017::A6);
+    inputs::init_button(&mut mcp1, Mcp23017::A7);
+
+    inputs::init_button(&mut mcp1, Mcp23017::B0);
+    inputs::init_button(&mut mcp1, Mcp23017::B1);
+    inputs::init_button(&mut mcp1, Mcp23017::B2);
+    inputs::init_button(&mut mcp1, Mcp23017::B3);
+    inputs::init_button(&mut mcp1, Mcp23017::B4);
+    inputs::init_button(&mut mcp1, Mcp23017::B5);
+    inputs::init_button(&mut mcp1, Mcp23017::B6);
+    inputs::init_button(&mut mcp1, Mcp23017::B7);
+
+    inputs::init_button(&mut mcp2, Mcp23017::A0);
+    inputs::init_button(&mut mcp2, Mcp23017::A1);
+    inputs::init_button(&mut mcp2, Mcp23017::A2);
+    inputs::init_button(&mut mcp2, Mcp23017::A3);
+    inputs::init_button(&mut mcp2, Mcp23017::A4);
+    inputs::init_button(&mut mcp2, Mcp23017::A5);
+    inputs::init_button(&mut mcp2, Mcp23017::A6);
+    inputs::init_button(&mut mcp2, Mcp23017::A7);
+
+    inputs::init_button(&mut mcp2, Mcp23017::B0);
+    inputs::init_button(&mut mcp2, Mcp23017::B1);
+    inputs::init_button(&mut mcp2, Mcp23017::B2);
+    inputs::init_button(&mut mcp2, Mcp23017::B3);
+    inputs::init_button(&mut mcp2, Mcp23017::B4);
+    inputs::init_button(&mut mcp2, Mcp23017::B5);
+    inputs::init_button(&mut mcp2, Mcp23017::B6);
+    inputs::init_button(&mut mcp2, Mcp23017::B7);
 
     // Input Polling rate
     let mut input_count_down = timer.count_down();
@@ -260,10 +295,10 @@ fn main() -> ! {
             }
 
             if all_button {
-                let mut bank_a1 = fgc::read_bank_a1(&mut mcp);
-                let mut bank_b1 = fgc::read_bank_b1(&mut mcp);
-                let mut bank_a2 = [Level::Low; 8];
-                let mut bank_b2 = [Level::Low; 8];
+                let mut bank_a1 = allbtn::read_bank_a1(&mut mcp1);
+                let mut bank_b1 = allbtn::read_bank_b1(&mut mcp1);
+                let mut bank_a2 = allbtn::read_bank_a1(&mut mcp2);
+                let mut bank_b2 = allbtn::read_bank_b1(&mut mcp2);
 
                 //if bank_a1[4] == Level::High {
                 //    all_button = false;
@@ -282,9 +317,10 @@ fn main() -> ! {
                     }
                 }
             } else {
-                let mut bank_a1 = smash::read_bank_a1(&mut mcp);
-                let mut bank_b1 = smash::read_bank_b1(&mut mcp);
+                let mut bank_a1 = smash::read_bank_a1(&mut mcp1);
+                let mut bank_b1 = smash::read_bank_b1(&mut mcp1);
                 let mut bank_a2 = [Level::Low; 8];
+                let mut bank_b2 = [Level::Low; 8];
 
                 if bank_a1[0] == Level::High {
                     all_button = true;
@@ -303,12 +339,6 @@ fn main() -> ! {
                 //}
             }
         }
-
-        if all_button {
-            if all_button_usb_dev.poll(&mut [&mut all_button_joy]) {};
-            //} else {
-            //    if classic_usb_dev.poll(&mut [&mut classic_joy]) {};
-        }
     }
 }
 
@@ -316,69 +346,4 @@ pub fn exit() -> ! {
     loop {
         cortex_m::asm::bkpt();
     }
-}
-
-fn get_all_button_report(
-    bank_a1: &mut [Level; 8],
-    bank_b1: &mut [Level; 8],
-    bank_a2: &mut [Level; 8],
-    bank_b2: &mut [Level; 8],
-) -> all_button_layout::AllButtonReport {
-    let mut a1 = 0;
-    for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            a1 |= 1 << idx;
-        }
-    }
-
-    let mut b1 = 0;
-    for (idx, pressed) in bank_b1[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            b1 |= 1 << idx;
-        }
-    }
-
-    let mut a2 = 0;
-    for (idx, pressed) in bank_a2[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            a2 |= 1 << idx;
-        }
-    }
-
-    let mut b2 = 0;
-    for (idx, pressed) in bank_b2[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            b2 |= 1 << idx;
-        }
-    }
-    all_button_layout::AllButtonReport { a1, b1, a2, b2 }
-}
-
-fn get_classic_report(
-    bank_a1: &mut [Level; 8],
-    bank_b1: &mut [Level; 8],
-    bank_a2: &mut [Level; 8],
-) -> classic_layout::ClassicReport {
-    let mut a1 = 0;
-    for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            a1 |= 1 << idx;
-        }
-    }
-
-    let mut b1 = 0;
-    for (idx, pressed) in bank_b1[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            b1 |= 1 << idx;
-        }
-    }
-
-    let mut a2 = 0;
-    for (idx, pressed) in bank_a2[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
-            a2 |= 1 << idx;
-        }
-    }
-
-    classic_layout::ClassicReport { a1, b1, a2 }
 }

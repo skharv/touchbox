@@ -23,36 +23,49 @@ pub fn read_bank_a1(
         buttons[0] = a0;
     } else {
         buttons[0] = Level::Low;
-    }
+    };
 
     if let Ok(a1) = mcp.gpio(Mcp23017::A1) {
         buttons[1] = a1;
     } else {
         buttons[1] = Level::Low;
-    }
+    };
 
     if let Ok(a2) = mcp.gpio(Mcp23017::A2) {
         buttons[2] = a2;
     } else {
         buttons[2] = Level::Low;
-    }
+    };
 
     if let Ok(a3) = mcp.gpio(Mcp23017::A3) {
         buttons[3] = a3;
     } else {
         buttons[3] = Level::Low;
-    }
+    };
 
     if let Ok(a4) = mcp.gpio(Mcp23017::A4) {
         buttons[4] = a4;
     } else {
         buttons[4] = Level::Low;
-    }
+    };
 
-    buttons[5] = Level::Low;
-    buttons[6] = Level::Low;
-    buttons[7] = Level::Low;
+    if let Ok(a5) = mcp.gpio(Mcp23017::A5) {
+        buttons[5] = a5;
+    } else {
+        buttons[5] = Level::Low;
+    };
 
+    if let Ok(a6) = mcp.gpio(Mcp23017::A6) {
+        buttons[6] = a6;
+    } else {
+        buttons[6] = Level::Low;
+    };
+
+    if let Ok(a7) = mcp.gpio(Mcp23017::A7) {
+        buttons[7] = a7;
+    } else {
+        buttons[7] = Level::Low;
+    };
     buttons
 }
 

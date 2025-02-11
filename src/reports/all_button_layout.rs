@@ -1,5 +1,6 @@
 use core::default::Default;
 use fugit::ExtU32;
+use mcp230xx::Level;
 use packed_struct::prelude::*;
 use usb_device::bus::UsbBus;
 use usb_device::class_prelude::UsbBusAllocator;
@@ -101,4 +102,40 @@ impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for AllButtonConfig<'a> {
             interface: Interface::new(usb_alloc, self.interface),
         }
     }
+}
+
+pub fn get_all_button_report(
+    bank_a1: &mut [Level; 8],
+    bank_b1: &mut [Level; 8],
+    bank_a2: &mut [Level; 8],
+    bank_b2: &mut [Level; 8],
+) -> AllButtonReport {
+    let mut a1 = 0;
+    for (idx, pressed) in bank_a1[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            a1 |= 1 << idx;
+        }
+    }
+
+    let mut b1 = 0;
+    for (idx, pressed) in bank_b1[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            b1 |= 1 << idx;
+        }
+    }
+
+    let mut a2 = 0;
+    for (idx, pressed) in bank_a2[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            a2 |= 1 << idx;
+        }
+    }
+
+    let mut b2 = 0;
+    for (idx, pressed) in bank_b2[..8].iter_mut().enumerate() {
+        if *pressed == Level::High {
+            b2 |= 1 << idx;
+        }
+    }
+    AllButtonReport { a1, b1, a2, b2 }
 }

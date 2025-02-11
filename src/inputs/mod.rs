@@ -1,9 +1,10 @@
 use crate::{hal::I2C, pac::I2C0};
-use mcp230xx::{Mcp23017, Mcp230xx, Polarity};
+use mcp230xx::{Mcp23017, Mcp230xx};
 use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
 use rp_pico::hal::gpio::PullUp;
 use rp_pico::hal::gpio::{FunctionI2C, Pin};
 
+pub mod allbtn;
 pub mod fgc;
 pub mod smash;
 
@@ -23,5 +24,6 @@ pub fn init_button(
 ) {
     mcp.set_direction(map, mcp230xx::Direction::Input).unwrap();
     mcp.set_pull_up(map, mcp230xx::PullUp::Enabled).unwrap();
-    mcp.set_input_polarity(map, Polarity::Inverted).unwrap();
+    mcp.set_input_polarity(map, mcp230xx::Polarity::Inverted)
+        .unwrap();
 }
