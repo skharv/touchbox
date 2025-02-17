@@ -24,18 +24,22 @@ pub const CLASSIC_DESCRIPTOR: &[u8] = &[
     0x09, 0x39, //   Usage Hat Switch   
     0x15, 0x00, //   Logical Minimum (0)
     0x25, 0x07, //   Logical Maximum (7)
-    0x75, 0x08, //   Report Size (4)
+    0x75, 0x08, //   Report Size (8)
     0x95, 0x01, //   Report Count (1)
     0x81, 0x42, //   Input (Data,Var,Abs,Null)
     // Buttons
     0x05, 0x09, //   Usage Page (Button)
     0x19, 0x01, //   Usage Minimum (1)
-    0x29, 0x14, //   Usage Maximum (20)
+    0x29, 0x15, //   Usage Maximum (21)
     0x15, 0x00, //   Logical Minimum (0)
     0x25, 0x01, //   Logical Maximum (1)
     0x75, 0x01, //   Report Size (1)
-    0x95, 0x14, //   Report Count (20)
+    0x95, 0x15, //   Report Count (21)
     0x81, 0x02, //   Input (Data,Var,Abs)
+    // Padding
+    0x75, 0x01, //   Report Size (1)
+    0x95, 0x03, //   Report Count (03)
+    0x81, 0x01, //   Input (Cnst,Ary,Abs)
     // Done
     0xC0,       // End Collection
 ];
@@ -146,6 +150,7 @@ pub fn get_classic_report(
     // b1[6] is used for up
     let modh = bank_b1[5] == Level::High;
     let mody = bank_b1[7] == Level::High;
+    let moda = bank_a1[0] == Level::High;
 
     // a2[0] is used for up
     let rright = bank_a2[1] == Level::High;
@@ -225,13 +230,13 @@ pub fn get_classic_report(
         buttons1 |= 1 << 7;
     }
 
-    if ol2 {
+    if ol1 {
         buttons2 |= 1 << 0;
     }
-    if mody {
+    if ol2 {
         buttons2 |= 1 << 1;
     }
-    if ol1 {
+    if ol3 {
         buttons2 |= 1 << 2;
     }
     if or1 {
@@ -240,27 +245,30 @@ pub fn get_classic_report(
     if or2 {
         buttons2 |= 1 << 4;
     }
-    if ol3 {
+    if or3 {
         buttons2 |= 1 << 5;
     }
-    if or3 {
+    if moda {
         buttons2 |= 1 << 6;
     }
     if modh {
         buttons2 |= 1 << 7;
     }
 
-    if rup {
+    if mody {
         buttons3 |= 1 << 0;
     }
-    if rdown {
+    if rup {
         buttons3 |= 1 << 1;
     }
-    if rleft {
+    if rdown {
         buttons3 |= 1 << 2;
     }
-    if rright {
+    if rleft {
         buttons3 |= 1 << 3;
+    }
+    if rright {
+        buttons3 |= 1 << 4;
     }
 
     ClassicReport {

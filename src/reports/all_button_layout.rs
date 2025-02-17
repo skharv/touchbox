@@ -19,14 +19,20 @@ pub const ALL_BUTTON_DESCRIPTOR: &[u8] = &[
     0x05, 0x01,        // Usage Page (Generic Desktop)
     0x09, 0x04,        // Usage (Joystick)
     0xA1, 0x01,        // Collection (Application)
+    //   Buttons
     0x05, 0x09,        //   Usage Page (Button)
     0x19, 0x01,        //   Usage Minimum (1)
-    0x29, 0x1A,        //   Usage Maximum (24)
+    0x29, 0x1A,        //   Usage Maximum (26)
     0x15, 0x00,        //   Logical Minimum (0)
     0x25, 0x01,        //   Logical Maximum (1)
     0x75, 0x01,        //   Report Size (1)
-    0x95, 0x1A,        //   Report Count (24)
+    0x95, 0x1A,        //   Report Count (26)
     0x81, 0x02,        //   Input (Data,Var,Abs)
+    //   Padding
+    0x75, 0x01,        //   Report Size (1)
+    0x95, 0x06,        //   Report Count (06)
+    0x81, 0x01,        //   Input (Cnst,Ary,Abs)
+    //   Done
     0xC0,              // End Collection
 ];
 
