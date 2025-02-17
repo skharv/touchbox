@@ -5,8 +5,6 @@ use rp_pico::hal::gpio::PullUp;
 use rp_pico::hal::gpio::{FunctionI2C, Pin};
 
 pub mod allbtn;
-pub mod fgc;
-pub mod smash;
 
 #[allow(clippy::type_complexity)]
 pub fn init_button(

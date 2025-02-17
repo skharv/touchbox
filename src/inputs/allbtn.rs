@@ -5,7 +5,7 @@ use rp_pico::hal::gpio::PullUp;
 use rp_pico::hal::gpio::{FunctionI2C, Pin};
 
 #[allow(clippy::type_complexity)]
-pub fn read_bank_a1(
+pub fn read_bank_a(
     mcp: &mut Mcp230xx<
         I2C<
             I2C0,
@@ -70,7 +70,7 @@ pub fn read_bank_a1(
 }
 
 #[allow(clippy::type_complexity)]
-pub fn read_bank_b1(
+pub fn read_bank_b(
     mcp: &mut Mcp230xx<
         I2C<
             I2C0,
