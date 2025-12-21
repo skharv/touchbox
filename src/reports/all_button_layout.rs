@@ -137,28 +137,28 @@ pub fn get_all_button_report(
 
     let mut a1 = 0;
     for (idx, pressed) in ro_a1[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
+        if *pressed == Level::Low {
             a1 |= 1 << idx;
         }
     }
 
     let mut b1 = 0;
     for (idx, pressed) in ro_b1[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
+        if *pressed == Level::Low {
             b1 |= 1 << idx;
         }
     }
 
     let mut a2 = 0;
     for (idx, pressed) in ro_a2[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
+        if *pressed == Level::Low {
             a2 |= 1 << idx;
         }
     }
 
     let mut b2 = 0;
     for (idx, pressed) in ro_b2[..8].iter_mut().enumerate() {
-        if *pressed == Level::High {
+        if *pressed == Level::Low {
             b2 |= 1 << idx;
         }
     }

@@ -150,42 +150,42 @@ pub fn get_twin_stick_report(
     let mut y = 0;
     let mut z = 0;
     let mut rz = 0;
-    let mut hat = 255;
+    let mut hat = 8;
     let mut buttons1 = 0;
     let mut buttons2 = 0;
 
-    let modh = bank_b1[5] == Level::High;
-    let modx = bank_b1[6] == Level::High;
-    let mody = bank_b1[7] == Level::High;
+    let modh = bank_b1[5] == Level::Low;
+    let modx = bank_b1[6] == Level::Low;
+    let mody = bank_b1[7] == Level::Low;
 
-    let left = bank_a1[1] == Level::High;
-    let right = bank_a1[3] == Level::High;
-    let up = bank_b2[7] == Level::High;
-    let down = bank_a1[2] == Level::High;
+    let left = bank_a1[1] == Level::Low;
+    let right = bank_a1[3] == Level::Low;
+    let up = bank_b2[7] == Level::Low;
+    let down = bank_a1[2] == Level::Low;
 
-    let rup = bank_a2[2] == Level::High;
-    let rdown = bank_a2[4] == Level::High;
-    let rleft = bank_a2[3] == Level::High;
-    let rright = bank_a2[1] == Level::High;
+    let rup = bank_a2[2] == Level::Low;
+    let rdown = bank_a2[4] == Level::Low;
+    let rleft = bank_a2[3] == Level::Low;
+    let rright = bank_a2[1] == Level::Low;
 
-    let lb = bank_a1[0] == Level::High;
-    let ba = bank_a2[0] == Level::High;
+    let lb = bank_a1[0] == Level::Low;
+    let ba = bank_a2[0] == Level::Low;
 
-    let ol1 = bank_a1[4] == Level::High;
-    let ol2 = bank_a1[5] == Level::High;
-    let ol3 = bank_a1[6] == Level::High;
+    let ol1 = bank_a1[4] == Level::Low;
+    let ol2 = bank_a1[5] == Level::Low;
+    let ol3 = bank_a1[6] == Level::Low;
 
-    let or1 = bank_b1[2] == Level::High;
-    let or2 = bank_b1[3] == Level::High;
-    let or3 = bank_b1[4] == Level::High;
+    let or1 = bank_b1[2] == Level::Low;
+    let or2 = bank_b1[3] == Level::Low;
+    let or3 = bank_b1[4] == Level::Low;
 
-    let bb = bank_b2[0] == Level::High;
-    let rb = bank_b2[1] == Level::High;
-    let by = bank_b2[2] == Level::High;
-    let bx = bank_b2[3] == Level::High;
-    let lt = bank_b2[4] == Level::High;
-    let rt = bank_b2[5] == Level::High;
-    let bs = bank_b2[6] == Level::High;
+    let bb = bank_b2[0] == Level::Low;
+    let rb = bank_b2[1] == Level::Low;
+    let by = bank_b2[2] == Level::Low;
+    let bx = bank_b2[3] == Level::Low;
+    let lt = bank_b2[4] == Level::Low;
+    let rt = bank_b2[5] == Level::Low;
+    let bs = bank_b2[6] == Level::Low;
 
     // X & Y axis
     // No Modifiers

@@ -22,6 +22,9 @@ pub fn init_button(
 ) {
     mcp.set_direction(map, mcp230xx::Direction::Input).unwrap();
     mcp.set_pull_up(map, mcp230xx::PullUp::Enabled).unwrap();
-    mcp.set_input_polarity(map, mcp230xx::Polarity::Inverted)
+    mcp.set_input_polarity(map, mcp230xx::Polarity::NotInverted)
         .unwrap();
+    //mcp.set_gpio(map, mcp230xx::Level::High).unwrap();
+    //mcp.set_int_mode(map, mcp230xx::IntMode::OnLevel).unwrap();
+    //mcp.set_output_latch(map, mcp230xx::Level::Low).unwrap();
 }

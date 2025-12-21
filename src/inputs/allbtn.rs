@@ -1,76 +1,23 @@
+use crate::Debounce;
 use crate::{hal::I2C, pac::I2C0};
 use mcp230xx::{Level, Mcp23017, Mcp230xx};
 use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
 use rp_pico::hal::gpio::PullUp;
 use rp_pico::hal::gpio::{FunctionI2C, Pin};
 
-#[allow(clippy::type_complexity)]
-pub fn read_bank_a(
-    mcp: &mut Mcp230xx<
-        I2C<
-            I2C0,
-            (
-                Pin<Gpio28, FunctionI2C, PullUp>,
-                Pin<Gpio17, FunctionI2C, PullUp>,
-            ),
-        >,
-        Mcp23017,
-    >,
-) -> [Level; 8] {
-    let mut buttons: [Level; 8] = [Level::Low; 8];
+pub const BANK_A: u8 = 0x12;
+pub const BANK_B: u8 = 0x13;
 
-    if let Ok(a0) = mcp.gpio(Mcp23017::A0) {
-        buttons[0] = a0;
+fn bit_to_level(v: u8, bit: usize) -> Level {
+    if (v & (1 << bit)) != 0 {
+        Level::High
     } else {
-        buttons[0] = Level::Low;
-    };
-
-    if let Ok(a1) = mcp.gpio(Mcp23017::A1) {
-        buttons[1] = a1;
-    } else {
-        buttons[1] = Level::Low;
-    };
-
-    if let Ok(a2) = mcp.gpio(Mcp23017::A2) {
-        buttons[2] = a2;
-    } else {
-        buttons[2] = Level::Low;
-    };
-
-    if let Ok(a3) = mcp.gpio(Mcp23017::A3) {
-        buttons[3] = a3;
-    } else {
-        buttons[3] = Level::Low;
-    };
-
-    if let Ok(a4) = mcp.gpio(Mcp23017::A4) {
-        buttons[4] = a4;
-    } else {
-        buttons[4] = Level::Low;
-    };
-
-    if let Ok(a5) = mcp.gpio(Mcp23017::A5) {
-        buttons[5] = a5;
-    } else {
-        buttons[5] = Level::Low;
-    };
-
-    if let Ok(a6) = mcp.gpio(Mcp23017::A6) {
-        buttons[6] = a6;
-    } else {
-        buttons[6] = Level::Low;
-    };
-
-    if let Ok(a7) = mcp.gpio(Mcp23017::A7) {
-        buttons[7] = a7;
-    } else {
-        buttons[7] = Level::Low;
-    };
-    buttons
+        Level::Low
+    }
 }
 
 #[allow(clippy::type_complexity)]
-pub fn read_bank_b(
+pub fn read_bank(
     mcp: &mut Mcp230xx<
         I2C<
             I2C0,
@@ -81,55 +28,19 @@ pub fn read_bank_b(
         >,
         Mcp23017,
     >,
+    bank: u8,
+    debounce: &mut [Debounce; 8],
+    now: u64,
+    debounce_us: u64,
 ) -> [Level; 8] {
-    let mut buttons: [Level; 8] = [Level::Low; 8];
+    let mut buttons: [Level; 8] = [Level::High; 8];
 
-    if let Ok(b0) = mcp.gpio(Mcp23017::B0) {
-        buttons[0] = b0;
-    } else {
-        buttons[0] = Level::Low;
-    };
+    let raw = mcp.read(bank).unwrap();
 
-    if let Ok(b1) = mcp.gpio(Mcp23017::B1) {
-        buttons[1] = b1;
-    } else {
-        buttons[1] = Level::Low;
-    };
+    for i in 0..8 {
+        let level = bit_to_level(raw, i);
+        buttons[i] = debounce[i].update(level, now, debounce_us);
+    }
 
-    if let Ok(b2) = mcp.gpio(Mcp23017::B2) {
-        buttons[2] = b2;
-    } else {
-        buttons[2] = Level::Low;
-    };
-
-    if let Ok(b3) = mcp.gpio(Mcp23017::B3) {
-        buttons[3] = b3;
-    } else {
-        buttons[3] = Level::Low;
-    };
-
-    if let Ok(b4) = mcp.gpio(Mcp23017::B4) {
-        buttons[4] = b4;
-    } else {
-        buttons[4] = Level::Low;
-    };
-
-    if let Ok(b5) = mcp.gpio(Mcp23017::B5) {
-        buttons[5] = b5;
-    } else {
-        buttons[5] = Level::Low;
-    };
-
-    if let Ok(b6) = mcp.gpio(Mcp23017::B6) {
-        buttons[6] = b6;
-    } else {
-        buttons[6] = Level::Low;
-    };
-
-    if let Ok(b7) = mcp.gpio(Mcp23017::B7) {
-        buttons[7] = b7;
-    } else {
-        buttons[7] = Level::Low;
-    };
     buttons
 }

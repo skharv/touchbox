@@ -2,7 +2,10 @@
 #![no_main]
 
 use core::cell::RefCell;
+use core::ops::Add;
 
+use crate::inputs::allbtn::{BANK_A, BANK_B};
+use crate::reports::projectl_layout::{self, get_projectl_report};
 use crate::{hal::I2C, pac::I2C0};
 use cortex_m::{delay::Delay, prelude::_embedded_hal_timer_CountDown};
 use cst816s::TouchGesture;
@@ -16,11 +19,12 @@ use rp_pico as bsp;
 use rp_pico::hal::gpio::bank0::{Gpio17, Gpio28};
 use rp_pico::hal::gpio::{FunctionI2C, FunctionPwm, Pin};
 use rp_pico::hal::multicore::Stack;
+use rp_pico::hal::Timer;
 use usb_device::{class_prelude::*, prelude::*};
 use usbd_human_interface_device::prelude::*;
 
 use bsp::entry;
-use fugit::{ExtU32, RateExtU32};
+use fugit::{ExtU32, Instant, RateExtU32};
 
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
@@ -47,6 +51,7 @@ use reports::{twin_stick_layout, twin_stick_layout::get_twin_stick_report};
 
 const SCREEN_WIDTH: u32 = 240;
 const SCREEN_HEIGHT: u32 = 240;
+const DEBOUNCE_US: u64 = 10_000;
 
 #[derive(PartialEq, Eq, Default)]
 #[repr(u8)]
@@ -56,6 +61,37 @@ enum Mode {
     AllButton,
     SSBM,
     StreetFighter,
+    ProjectL,
+}
+
+#[derive(Copy, Clone)]
+struct Debounce {
+    last_sample: Level,
+    stable: Level,
+    last_change: u64,
+}
+
+impl Debounce {
+    fn new(now: u64) -> Self {
+        Self {
+            last_sample: Level::High,
+            stable: Level::High,
+            last_change: now,
+        }
+    }
+
+    fn update(&mut self, raw: Level, now: u64, debounce_us: u64) -> Level {
+        if raw != self.last_sample {
+            self.last_sample = raw;
+            self.last_change = now;
+        }
+
+        if raw == self.last_sample && now - self.last_change >= debounce_us {
+            self.stable = raw;
+        }
+
+        self.stable
+    }
 }
 
 static mut CORE1_STACK: Stack<4096> = Stack::new();
@@ -129,7 +165,7 @@ fn main() -> ! {
     let spi = spi.init(
         &mut pac.RESETS,
         clocks.peripheral_clock.freq(),
-        8_000_000u32.Hz(),
+        120_000_000u32.Hz(),
         embedded_hal::spi::MODE_0,
     );
 
@@ -208,43 +244,20 @@ fn main() -> ! {
     >::new(&i2c_ref_cell, 0x26)
     .unwrap();
 
-    // Initialize all the buttons for MCP1
-    inputs::init_button(&mut mcp1, Mcp23017::A0);
-    inputs::init_button(&mut mcp1, Mcp23017::A1);
-    inputs::init_button(&mut mcp1, Mcp23017::A2);
-    inputs::init_button(&mut mcp1, Mcp23017::A3);
-    inputs::init_button(&mut mcp1, Mcp23017::A4);
-    inputs::init_button(&mut mcp1, Mcp23017::A5);
-    inputs::init_button(&mut mcp1, Mcp23017::A6);
-    inputs::init_button(&mut mcp1, Mcp23017::A7);
+    //Setup the MCP boards
+    mcp1.write(0x00, 0xFF).unwrap(); //IODIRA
+    mcp1.write(0x0C, 0xFF).unwrap(); //GPPUA
+    mcp1.write(0x01, 0xFF).unwrap(); //IODIRB
+    mcp1.write(0x0D, 0xFF).unwrap(); //GPPUB
+    mcp1.write(0x02, 0x00).unwrap(); //IPOLA
+    mcp1.write(0x03, 0x00).unwrap(); //IPOLB
 
-    inputs::init_button(&mut mcp1, Mcp23017::B0);
-    inputs::init_button(&mut mcp1, Mcp23017::B1);
-    inputs::init_button(&mut mcp1, Mcp23017::B2);
-    inputs::init_button(&mut mcp1, Mcp23017::B3);
-    inputs::init_button(&mut mcp1, Mcp23017::B4);
-    inputs::init_button(&mut mcp1, Mcp23017::B5);
-    inputs::init_button(&mut mcp1, Mcp23017::B6);
-    inputs::init_button(&mut mcp1, Mcp23017::B7);
-
-    // Initialize all the buttons for MCP2
-    inputs::init_button(&mut mcp2, Mcp23017::A0);
-    inputs::init_button(&mut mcp2, Mcp23017::A1);
-    inputs::init_button(&mut mcp2, Mcp23017::A2);
-    inputs::init_button(&mut mcp2, Mcp23017::A3);
-    inputs::init_button(&mut mcp2, Mcp23017::A4);
-    inputs::init_button(&mut mcp2, Mcp23017::A5);
-    inputs::init_button(&mut mcp2, Mcp23017::A6);
-    inputs::init_button(&mut mcp2, Mcp23017::A7);
-
-    inputs::init_button(&mut mcp2, Mcp23017::B0);
-    inputs::init_button(&mut mcp2, Mcp23017::B1);
-    inputs::init_button(&mut mcp2, Mcp23017::B2);
-    inputs::init_button(&mut mcp2, Mcp23017::B3);
-    inputs::init_button(&mut mcp2, Mcp23017::B4);
-    inputs::init_button(&mut mcp2, Mcp23017::B5);
-    inputs::init_button(&mut mcp2, Mcp23017::B6);
-    inputs::init_button(&mut mcp2, Mcp23017::B7);
+    mcp2.write(0x00, 0xFF).unwrap(); //IODIRA
+    mcp2.write(0x0C, 0xFF).unwrap(); //GPPUA
+    mcp2.write(0x01, 0xFF).unwrap(); //IODIRB
+    mcp2.write(0x0D, 0xFF).unwrap(); //GPPUB
+    mcp2.write(0x02, 0x00).unwrap(); //IPOLA
+    mcp2.write(0x03, 0x00).unwrap(); //IPOLB
 
     // Create display driver
     let clear_colour = Rgb565::CSS_BLACK;
@@ -269,9 +282,9 @@ fn main() -> ! {
 
     channel.set_duty_cycle_percent(50).unwrap();
 
-    // Set the input Polling rate
+    // Set the input Polling rate (if < 2.millis it will go crazy style)
     let mut input_count_down = timer.count_down();
-    input_count_down.start(1.millis());
+    input_count_down.start(2.millis());
 
     let mut cleared = false;
 
@@ -299,18 +312,26 @@ fn main() -> ! {
         }
 
         // All Buttons
-        if mcp1.gpio(Mcp23017::A5).unwrap() == Level::High {
+        if mcp1.gpio(Mcp23017::A5).unwrap() == Level::Low {
             selected_mode = Mode::AllButton;
             break;
         }
+
         // SSBM
-        if mcp1.gpio(Mcp23017::A4).unwrap() == Level::High {
+        if mcp1.gpio(Mcp23017::A4).unwrap() == Level::Low {
             selected_mode = Mode::SSBM;
             break;
         }
+
         // StreetFighter
-        if mcp1.gpio(Mcp23017::B2).unwrap() == Level::High {
+        if mcp1.gpio(Mcp23017::B2).unwrap() == Level::Low {
             selected_mode = Mode::StreetFighter;
+            break;
+        }
+
+        // ProjectL
+        if mcp1.gpio(Mcp23017::B3).unwrap() == Level::Low {
+            selected_mode = Mode::ProjectL;
             break;
         }
     }
@@ -320,7 +341,7 @@ fn main() -> ! {
             exit();
         }
         Mode::AllButton => {
-            let mut all_button_joy = UsbHidClassBuilder::new()
+            let mut joystick = UsbHidClassBuilder::new()
                 .add_device(all_button_layout::AllButtonConfig::default())
                 .build(&usb_bus);
 
@@ -335,15 +356,27 @@ fn main() -> ! {
             let bmp_data = include_bytes!("../assets/ab.raw");
             display.draw_image(bmp_data).unwrap();
 
+            let now = timer.get_counter().ticks();
+            let mut a1_db = [Debounce::new(now); 8];
+            let mut b1_db = [Debounce::new(now); 8];
+            let mut a2_db = [Debounce::new(now); 8];
+            let mut b2_db = [Debounce::new(now); 8];
+
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
-                    let mut bank_a1 = allbtn::read_bank_a(&mut mcp1);
-                    let mut bank_b1 = allbtn::read_bank_b(&mut mcp1);
-                    let mut bank_a2 = allbtn::read_bank_a(&mut mcp2);
-                    let mut bank_b2 = allbtn::read_bank_b(&mut mcp2);
+                    let now = timer.get_counter().ticks();
 
-                    match all_button_joy.device().write_report(&get_all_button_report(
+                    let mut bank_a1 =
+                        allbtn::read_bank(&mut mcp1, BANK_A, &mut a1_db, now, DEBOUNCE_US);
+                    let mut bank_b1 =
+                        allbtn::read_bank(&mut mcp1, BANK_B, &mut b1_db, now, DEBOUNCE_US);
+                    let mut bank_a2 =
+                        allbtn::read_bank(&mut mcp2, BANK_A, &mut a2_db, now, DEBOUNCE_US);
+                    let mut bank_b2 =
+                        allbtn::read_bank(&mut mcp2, BANK_B, &mut b2_db, now, DEBOUNCE_US);
+
+                    match joystick.device().write_report(&get_all_button_report(
                         &mut bank_a1,
                         &mut bank_b1,
                         &mut bank_a2,
@@ -357,14 +390,11 @@ fn main() -> ! {
                     }
                 }
 
-                if usb_dev.poll(&mut [&mut all_button_joy]) {}
+                if usb_dev.poll(&mut [&mut joystick]) {}
             }
         }
         Mode::SSBM => {
-            let bmp_data = include_bytes!("../assets/ssbm.raw");
-            display.draw_image(bmp_data).unwrap();
-
-            let mut twin_stick_joy = UsbHidClassBuilder::new()
+            let mut joystick = UsbHidClassBuilder::new()
                 .add_device(twin_stick_layout::TwinStickConfig::default())
                 .build(&usb_bus);
 
@@ -376,15 +406,30 @@ fn main() -> ! {
                 .unwrap()
                 .build();
 
+            let bmp_data = include_bytes!("../assets/rivals2.raw");
+            display.draw_image(bmp_data).unwrap();
+
+            let now = timer.get_counter().ticks();
+            let mut a1_db = [Debounce::new(now); 8];
+            let mut b1_db = [Debounce::new(now); 8];
+            let mut a2_db = [Debounce::new(now); 8];
+            let mut b2_db = [Debounce::new(now); 8];
+
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
-                    let mut bank_a1 = allbtn::read_bank_a(&mut mcp1);
-                    let mut bank_b1 = allbtn::read_bank_b(&mut mcp1);
-                    let mut bank_a2 = allbtn::read_bank_a(&mut mcp2);
-                    let mut bank_b2 = allbtn::read_bank_b(&mut mcp2);
+                    let now = timer.get_counter().ticks();
 
-                    match twin_stick_joy.device().write_report(&get_twin_stick_report(
+                    let mut bank_a1 =
+                        allbtn::read_bank(&mut mcp1, BANK_A, &mut a1_db, now, DEBOUNCE_US);
+                    let mut bank_b1 =
+                        allbtn::read_bank(&mut mcp1, BANK_B, &mut b1_db, now, DEBOUNCE_US);
+                    let mut bank_a2 =
+                        allbtn::read_bank(&mut mcp2, BANK_A, &mut a2_db, now, DEBOUNCE_US);
+                    let mut bank_b2 =
+                        allbtn::read_bank(&mut mcp2, BANK_B, &mut b2_db, now, DEBOUNCE_US);
+
+                    match joystick.device().write_report(&get_twin_stick_report(
                         &mut bank_a1,
                         &mut bank_b1,
                         &mut bank_a2,
@@ -398,34 +443,46 @@ fn main() -> ! {
                     }
                 }
 
-                if usb_dev.poll(&mut [&mut twin_stick_joy]) {}
+                if usb_dev.poll(&mut [&mut joystick]) {}
             }
         }
         Mode::StreetFighter => {
-            let bmp_data = include_bytes!("../assets/sf.raw");
-            display.draw_image(bmp_data).unwrap();
-
-            let mut classic_joy = UsbHidClassBuilder::new()
+            let mut joystick = UsbHidClassBuilder::new()
                 .add_device(classic_layout::ClassicConfig::default())
                 .build(&usb_bus);
 
             let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0003))
                 .strings(&[StringDescriptors::default()
                     .manufacturer("skharv")
-                    .product("touchbox(fightbox)")
+                    .product("touchbox(sfbox)")
                     .serial_number("00001")])
                 .unwrap()
                 .build();
 
+            let bmp_data = include_bytes!("../assets/SF.raw");
+            display.draw_image(bmp_data).unwrap();
+
+            let now = timer.get_counter().ticks();
+            let mut a1_db = [Debounce::new(now); 8];
+            let mut b1_db = [Debounce::new(now); 8];
+            let mut a2_db = [Debounce::new(now); 8];
+            let mut b2_db = [Debounce::new(now); 8];
+
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
-                    let mut bank_a1 = allbtn::read_bank_a(&mut mcp1);
-                    let mut bank_b1 = allbtn::read_bank_b(&mut mcp1);
-                    let mut bank_a2 = allbtn::read_bank_a(&mut mcp2);
-                    let mut bank_b2 = allbtn::read_bank_b(&mut mcp2);
+                    let now = timer.get_counter().ticks();
 
-                    match classic_joy.device().write_report(&get_classic_report(
+                    let mut bank_a1 =
+                        allbtn::read_bank(&mut mcp1, BANK_A, &mut a1_db, now, DEBOUNCE_US);
+                    let mut bank_b1 =
+                        allbtn::read_bank(&mut mcp1, BANK_B, &mut b1_db, now, DEBOUNCE_US);
+                    let mut bank_a2 =
+                        allbtn::read_bank(&mut mcp2, BANK_A, &mut a2_db, now, DEBOUNCE_US);
+                    let mut bank_b2 =
+                        allbtn::read_bank(&mut mcp2, BANK_B, &mut b2_db, now, DEBOUNCE_US);
+
+                    match joystick.device().write_report(&get_classic_report(
                         &mut bank_a1,
                         &mut bank_b1,
                         &mut bank_a2,
@@ -439,7 +496,60 @@ fn main() -> ! {
                     }
                 }
 
-                if usb_dev.poll(&mut [&mut classic_joy]) {}
+                if usb_dev.poll(&mut [&mut joystick]) {}
+            }
+        }
+        Mode::ProjectL => {
+            let mut joystick = UsbHidClassBuilder::new()
+                .add_device(projectl_layout::ProjectLConfig::default())
+                .build(&usb_bus);
+
+            let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0004))
+                .strings(&[StringDescriptors::default()
+                    .manufacturer("skharv")
+                    .product("touchbox(2XKObox)")
+                    .serial_number("00001")])
+                .unwrap()
+                .build();
+
+            let bmp_data = include_bytes!("../assets/2XKO.raw");
+            display.draw_image(bmp_data).unwrap();
+
+            let now = timer.get_counter().ticks();
+            let mut a1_db = [Debounce::new(now); 8];
+            let mut b1_db = [Debounce::new(now); 8];
+            let mut a2_db = [Debounce::new(now); 8];
+            let mut b2_db = [Debounce::new(now); 8];
+
+            // Begin Loop
+            loop {
+                if input_count_down.wait().is_ok() {
+                    let now = timer.get_counter().ticks();
+
+                    let mut bank_a1 =
+                        allbtn::read_bank(&mut mcp1, BANK_A, &mut a1_db, now, DEBOUNCE_US);
+                    let mut bank_b1 =
+                        allbtn::read_bank(&mut mcp1, BANK_B, &mut b1_db, now, DEBOUNCE_US);
+                    let mut bank_a2 =
+                        allbtn::read_bank(&mut mcp2, BANK_A, &mut a2_db, now, DEBOUNCE_US);
+                    let mut bank_b2 =
+                        allbtn::read_bank(&mut mcp2, BANK_B, &mut b2_db, now, DEBOUNCE_US);
+
+                    match joystick.device().write_report(&get_projectl_report(
+                        &mut bank_a1,
+                        &mut bank_b1,
+                        &mut bank_a2,
+                        &mut bank_b2,
+                    )) {
+                        Err(UsbHidError::WouldBlock) => {}
+                        Ok(_) => {}
+                        Err(e) => {
+                            core::panic!("Failed to write joystick report: {:?}", e)
+                        }
+                    }
+                }
+
+                if usb_dev.poll(&mut [&mut joystick]) {}
             }
         }
     }

@@ -15,7 +15,7 @@ use usbd_human_interface_device::{
 };
 
 #[rustfmt::skip]
-pub const CLASSIC_DESCRIPTOR: &[u8] = &[
+pub const PROJECTL_DESCRIPTOR: &[u8] = &[
     0x05, 0x01, // Usage Page (Generic Desktop)
     0x09, 0x05, // Usage (Gamepad)
     0xA1, 0x01, // Collection (Application)
@@ -30,15 +30,15 @@ pub const CLASSIC_DESCRIPTOR: &[u8] = &[
     // Buttons
     0x05, 0x09, //   Usage Page (Button)
     0x19, 0x01, //   Usage Minimum (1)
-    0x29, 0x15, //   Usage Maximum (21)
+    0x29, 0x16, //   Usage Maximum (22)
     0x15, 0x00, //   Logical Minimum (0)
     0x25, 0x01, //   Logical Maximum (1)
     0x75, 0x01, //   Report Size (1)
-    0x95, 0x15, //   Report Count (21)
+    0x95, 0x16, //   Report Count (22)
     0x81, 0x02, //   Input (Data,Var,Abs)
     // Padding
     0x75, 0x01, //   Report Size (1)
-    0x95, 0x03, //   Report Count (03)
+    0x95, 0x07, //   Report Count (07)
     0x81, 0x01, //   Input (Cnst,Ary,Abs)
     // Done
     0xC0,       // End Collection
@@ -47,7 +47,7 @@ pub const CLASSIC_DESCRIPTOR: &[u8] = &[
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default, PackedStruct)]
 #[packed_struct(endian = "lsb", size_bytes = "4")]
-pub struct ClassicReport {
+pub struct ProjectLReport {
     #[packed_field]
     pub hat: u8,
     #[packed_field]
@@ -58,12 +58,12 @@ pub struct ClassicReport {
     pub buttons3: u8,
 }
 
-pub struct Classic<'a, B: UsbBus> {
+pub struct ProjectL<'a, B: UsbBus> {
     interface: Interface<'a, B, InBytes8, OutNone, ReportSingle>,
 }
 
-impl<'a, B: UsbBus> Classic<'a, B> {
-    pub fn write_report(&mut self, report: &ClassicReport) -> Result<(), UsbHidError> {
+impl<'a, B: UsbBus> ProjectL<'a, B> {
+    pub fn write_report(&mut self, report: &ProjectLReport) -> Result<(), UsbHidError> {
         let data = report.pack().map_err(|_| UsbHidError::SerializationError)?;
         self.interface
             .write_report(&data)
@@ -72,7 +72,7 @@ impl<'a, B: UsbBus> Classic<'a, B> {
     }
 }
 
-impl<'a, B: UsbBus> DeviceClass<'a> for Classic<'a, B> {
+impl<'a, B: UsbBus> DeviceClass<'a> for ProjectL<'a, B> {
     type I = Interface<'a, B, InBytes8, OutNone, ReportSingle>;
 
     fn interface(&mut self) -> &mut Self::I {
@@ -86,14 +86,14 @@ impl<'a, B: UsbBus> DeviceClass<'a> for Classic<'a, B> {
     }
 }
 
-pub struct ClassicConfig<'a> {
+pub struct ProjectLConfig<'a> {
     interface: InterfaceConfig<'a, InBytes8, OutNone, ReportSingle>,
 }
 
-impl<'a> Default for ClassicConfig<'a> {
+impl<'a> Default for ProjectLConfig<'a> {
     #[must_use]
     fn default() -> Self {
-        let builder = InterfaceBuilder::new(CLASSIC_DESCRIPTOR)
+        let builder = InterfaceBuilder::new(PROJECTL_DESCRIPTOR)
             .unwrap()
             .boot_device(InterfaceProtocol::None)
             .description("Joystick")
@@ -106,15 +106,15 @@ impl<'a> Default for ClassicConfig<'a> {
     }
 }
 
-impl<'a> ClassicConfig<'a> {
+impl<'a> ProjectLConfig<'a> {
     #[must_use]
     pub fn new(interface: InterfaceConfig<'a, InBytes8, OutNone, ReportSingle>) -> Self {
         Self { interface }
     }
 }
 
-impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for ClassicConfig<'a> {
-    type Allocated = Classic<'a, B>;
+impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for ProjectLConfig<'a> {
+    type Allocated = ProjectL<'a, B>;
 
     fn allocate(self, usb_alloc: &'a UsbBusAllocator<B>) -> Self::Allocated {
         Self::Allocated {
@@ -123,12 +123,12 @@ impl<'a, B: UsbBus + 'a> UsbAllocatable<'a, B> for ClassicConfig<'a> {
     }
 }
 
-pub fn get_classic_report(
+pub fn get_projectl_report(
     bank_a1: &mut [Level; 8],
     bank_b1: &mut [Level; 8],
     bank_a2: &mut [Level; 8],
     bank_b2: &mut [Level; 8],
-) -> ClassicReport {
+) -> ProjectLReport {
     let mut hat = 8;
     let mut buttons1 = 0;
     let mut buttons2 = 0;
@@ -136,7 +136,7 @@ pub fn get_classic_report(
 
     let left = bank_a1[1] == Level::Low;
     let right = bank_a1[3] == Level::Low;
-    let up = (bank_b1[6] == Level::Low) || (bank_a2[0] == Level::Low);
+    let up = bank_b1[6] == Level::Low;
     let down = bank_a1[2] == Level::Low;
 
     let ol1 = bank_a1[4] == Level::Low;
@@ -152,7 +152,7 @@ pub fn get_classic_report(
     let mody = bank_b1[7] == Level::Low;
     let moda = bank_a1[0] == Level::Low;
 
-    // a2[0] is used for up
+    let rmid = bank_a2[0] == Level::Low;
     let rright = bank_a2[1] == Level::Low;
     let rup = bank_a2[2] == Level::Low;
     let rdown = bank_a2[4] == Level::Low;
@@ -208,44 +208,44 @@ pub fn get_classic_report(
     if ba {
         buttons1 |= 1 << 0;
     }
-    if bx {
+    if bb {
         buttons1 |= 1 << 1;
     }
-    if by {
+    if bx {
         buttons1 |= 1 << 2;
     }
-    if bb {
+    if by {
         buttons1 |= 1 << 3;
     }
-    if rt {
+    if lb {
         buttons1 |= 1 << 4;
     }
     if rb {
         buttons1 |= 1 << 5;
     }
-    if lb {
+    if ol1 {
         buttons1 |= 1 << 6;
     }
-    if lt {
+    if or1 {
         buttons1 |= 1 << 7;
     }
 
-    if ol1 {
+    if ol3 {
         buttons2 |= 1 << 0;
     }
-    if ol2 {
+    if or3 {
         buttons2 |= 1 << 1;
     }
-    if ol3 {
+    if lt {
         buttons2 |= 1 << 2;
     }
-    if or1 {
+    if rt {
         buttons2 |= 1 << 3;
     }
-    if or2 {
+    if ol2 {
         buttons2 |= 1 << 4;
     }
-    if or3 {
+    if or2 {
         buttons2 |= 1 << 5;
     }
     if moda {
@@ -270,8 +270,11 @@ pub fn get_classic_report(
     if rright {
         buttons3 |= 1 << 4;
     }
+    if rmid {
+        buttons3 |= 1 << 5;
+    }
 
-    ClassicReport {
+    ProjectLReport {
         hat,
         buttons1,
         buttons2,
