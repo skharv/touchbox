@@ -38,7 +38,7 @@ pub const PROJECTL_DESCRIPTOR: &[u8] = &[
     0x81, 0x02, //   Input (Data,Var,Abs)
     // Padding
     0x75, 0x01, //   Report Size (1)
-    0x95, 0x07, //   Report Count (07)
+    0x95, 0x02, //   Report Count (02)
     0x81, 0x01, //   Input (Cnst,Ary,Abs)
     // Done
     0xC0,       // End Collection
@@ -205,13 +205,13 @@ pub fn get_projectl_report(
         }
     }
 
-    if ba {
+    if bx {
         buttons1 |= 1 << 0;
     }
-    if bb {
+    if ba {
         buttons1 |= 1 << 1;
     }
-    if bx {
+    if bb {
         buttons1 |= 1 << 2;
     }
     if by {
@@ -223,23 +223,23 @@ pub fn get_projectl_report(
     if rb {
         buttons1 |= 1 << 5;
     }
-    if ol1 {
+    if lt {
         buttons1 |= 1 << 6;
     }
-    if or1 {
+    if rt {
         buttons1 |= 1 << 7;
     }
 
-    if ol3 {
+    if ol1 {
         buttons2 |= 1 << 0;
     }
-    if or3 {
+    if or1 {
         buttons2 |= 1 << 1;
     }
-    if lt {
+    if ol3 {
         buttons2 |= 1 << 2;
     }
-    if rt {
+    if or3 {
         buttons2 |= 1 << 3;
     }
     if ol2 {
@@ -258,19 +258,19 @@ pub fn get_projectl_report(
     if mody {
         buttons3 |= 1 << 0;
     }
-    if rup {
+    if rmid {
         buttons3 |= 1 << 1;
     }
-    if rdown {
+    if rup {
         buttons3 |= 1 << 2;
     }
-    if rleft {
+    if rdown {
         buttons3 |= 1 << 3;
     }
-    if rright {
+    if rleft {
         buttons3 |= 1 << 4;
     }
-    if rmid {
+    if rright {
         buttons3 |= 1 << 5;
     }
 
