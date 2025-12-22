@@ -305,6 +305,7 @@ fn main() -> ! {
     let mut selected_mode = Mode::None;
 
     while selected_mode == Mode::None {
+        watchdog.feed();
         if !cleared {
             let bmp_data = include_bytes!("../assets/menu.raw");
             display.draw_image(bmp_data).unwrap();
@@ -365,6 +366,8 @@ fn main() -> ! {
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
+                    watchdog.feed();
+
                     let now = timer.get_counter().ticks();
 
                     let mut bank_a1 =
@@ -418,6 +421,8 @@ fn main() -> ! {
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
+                    watchdog.feed();
+
                     let now = timer.get_counter().ticks();
 
                     let mut bank_a1 =
@@ -471,6 +476,8 @@ fn main() -> ! {
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
+                    watchdog.feed();
+
                     let now = timer.get_counter().ticks();
 
                     let mut bank_a1 =
@@ -524,6 +531,8 @@ fn main() -> ! {
             // Begin Loop
             loop {
                 if input_count_down.wait().is_ok() {
+                    watchdog.feed();
+
                     let now = timer.get_counter().ticks();
 
                     let mut bank_a1 =
