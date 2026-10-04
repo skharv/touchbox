@@ -994,6 +994,7 @@ dependencies = [
  "usb-device",
  "usbd-hid",
  "usbd-human-interface-device",
+ "usbd-midi",
 ]
 
 [[package]]
@@ -1067,6 +1068,16 @@ dependencies = [
  "num_enum 0.7.3",
  "option-block",
  "packed_struct",
+ "usb-device",
+]
+
+[[package]]
+name = "usbd-midi"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "096029e35e9e46252d48043b98819125581746b989a8612f397da81d35b2c206"
+dependencies = [
+ "num_enum 0.7.3",
  "usb-device",
 ]
 

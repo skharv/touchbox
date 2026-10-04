@@ -28,6 +28,11 @@ use fugit::{ExtU32, Instant, RateExtU32};
 
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
+use embedded_graphics::{
+    mono_font::{ascii::FONT_6X10, MonoTextStyle},
+    primitives::{PrimitiveStyle, Rectangle},
+    text::Text,
+};
 
 use bsp::hal::{
     self,
@@ -41,6 +46,7 @@ use bsp::hal::{
 use crate::hal::usb::UsbBus;
 
 mod inputs;
+mod midi;
 mod reports;
 
 use inputs::allbtn;
@@ -62,6 +68,7 @@ enum Mode {
     SSBM,
     StreetFighter,
     ProjectL,
+    Midi,
 }
 
 #[derive(Copy, Clone)]
@@ -309,6 +316,17 @@ fn main() -> ! {
         if !cleared {
             let bmp_data = include_bytes!("../assets/menu.raw");
             display.draw_image(bmp_data).unwrap();
+            Rectangle::new(Point::new(87, 186), Size::new(66, 28))
+                .into_styled(PrimitiveStyle::with_fill(Rgb565::CYAN))
+                .draw(&mut display)
+                .unwrap();
+            Text::new(
+                "MIDI",
+                Point::new(108, 204),
+                MonoTextStyle::new(&FONT_6X10, Rgb565::BLACK),
+            )
+            .draw(&mut display)
+            .unwrap();
             cleared = true;
         }
 
@@ -333,6 +351,12 @@ fn main() -> ! {
         // ProjectL
         if mcp1.gpio(Mcp23017::B3).unwrap() == Level::Low {
             selected_mode = Mode::ProjectL;
+            break;
+        }
+
+        // MIDI, selected from the same on-screen menu as the HID layouts.
+        if mcp1.gpio(Mcp23017::A7).unwrap() == Level::Low {
+            selected_mode = Mode::Midi;
             break;
         }
     }
@@ -559,6 +583,133 @@ fn main() -> ! {
                 }
 
                 if usb_dev.poll(&mut [&mut joystick]) {}
+            }
+        }
+        Mode::Midi => {
+            let mut midi_usb = usbd_midi::UsbMidiClass::new(&usb_bus, 1, 1).unwrap();
+            let mut usb_dev = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0x0005))
+                .device_class(0)
+                .device_sub_class(0)
+                .strings(&[StringDescriptors::default()
+                    .manufacturer("skharv")
+                    .product("touchbox(midi)")
+                    .serial_number("00001")])
+                .unwrap()
+                .build();
+
+            let now = timer.get_counter().ticks();
+            let mut a1_db = [Debounce::new(now); 8];
+            let mut b1_db = [Debounce::new(now); 8];
+            let mut a2_db = [Debounce::new(now); 8];
+            let mut b2_db = [Debounce::new(now); 8];
+            let mut midi_state = midi::MidiState::new();
+            let mut was_configured = false;
+            let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
+            const OCTAVE_NAMES: [&str; 11] =
+                ["-1", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+            loop {
+                usb_dev.poll(&mut [&mut midi_usb]);
+                let configured = usb_dev.state() == usb_device::device::UsbDeviceState::Configured;
+                if !configured && was_configured {
+                    midi_state.reset_usb();
+                }
+                was_configured = configured;
+
+                if input_count_down.wait().is_ok() {
+                    watchdog.feed();
+                    if configured {
+                        let now = timer.get_counter().ticks();
+                        let a1 = allbtn::read_bank(&mut mcp1, BANK_A, &mut a1_db, now, DEBOUNCE_US);
+                        let b1 = allbtn::read_bank(&mut mcp1, BANK_B, &mut b1_db, now, DEBOUNCE_US);
+                        let a2 = allbtn::read_bank(&mut mcp2, BANK_A, &mut a2_db, now, DEBOUNCE_US);
+                        let b2 = allbtn::read_bank(&mut mcp2, BANK_B, &mut b2_db, now, DEBOUNCE_US);
+                        midi_state.update(midi::Buttons {
+                            a1: a1.map(|button| button == Level::Low),
+                            b1: b1.map(|button| button == Level::Low),
+                            a2: a2.map(|button| button == Level::Low),
+                            b2: b2.map(|button| button == Level::Low),
+                        });
+                    }
+                }
+
+                if configured {
+                    if let Some(event) = midi_state.peek_event() {
+                        let packet = if event.on {
+                            [0x09, 0x90, event.note, 100]
+                        } else {
+                            [0x08, 0x80, event.note, 0]
+                        };
+                        match midi_usb.send_bytes(packet) {
+                            Ok(_) => midi_state.pop_event(),
+                            Err(usb_device::UsbError::WouldBlock) => {}
+                            Err(usb_device::UsbError::InvalidState) => {}
+                            Err(error) => panic!("Failed to send MIDI note: {:?}", error),
+                        }
+                    }
+                }
+
+                if midi_state.display_dirty {
+                    display.clear_screen(Rgb565::BLACK.into_storage()).unwrap();
+                    Text::new("MIDI", Point::new(85, 45), style)
+                        .draw(&mut display)
+                        .unwrap();
+                    Text::new("KEY", Point::new(38, 85), style)
+                        .draw(&mut display)
+                        .unwrap();
+                    Text::new(
+                        midi::NOTE_NAMES[midi_state.tonic as usize],
+                        Point::new(98, 85),
+                        style,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    Text::new("SCALE", Point::new(38, 105), style)
+                        .draw(&mut display)
+                        .unwrap();
+                    Text::new(
+                        midi::SCALE_NAMES[midi_state.scale],
+                        Point::new(98, 105),
+                        style,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    Text::new("OCTAVE", Point::new(38, 125), style)
+                        .draw(&mut display)
+                        .unwrap();
+                    Text::new(
+                        OCTAVE_NAMES[(midi_state.base_note / 12) as usize],
+                        Point::new(98, 125),
+                        style,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    Text::new("DRONE", Point::new(38, 145), style)
+                        .draw(&mut display)
+                        .unwrap();
+                    Text::new(
+                        if midi_state.drone_on { "ON" } else { "OFF" },
+                        Point::new(98, 145),
+                        style,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    Text::new(
+                        midi::NOTE_NAMES[(midi_state.drone_note % 12) as usize],
+                        Point::new(140, 145),
+                        style,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    Text::new(
+                        OCTAVE_NAMES[(midi_state.drone_note / 12) as usize],
+                        Point::new(160, 145),
+                        style,
+                    )
+                    .draw(&mut display)
+                    .unwrap();
+                    midi_state.display_dirty = false;
+                }
             }
         }
     }

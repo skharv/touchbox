@@ -1,0 +1,3 @@
+./ touchbox
+./ run
+./ nvim
